@@ -37,6 +37,7 @@ import {
   XCircle,
   Loader2,
   BarChart3,
+  Box,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -51,6 +52,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { Station3DCanvas, type SubStation3D } from "@/components/station-3d";
 import type { Station, SubStation, Task, TaskSummary } from "@/types/diagnosis";
 
 // ── 开发阶段模拟数据 ──
@@ -323,6 +325,10 @@ export default function StationDetailPage() {
           <TabsTrigger value="substations" className="text-sm">
             子场站（{subStations.length}）
           </TabsTrigger>
+          <TabsTrigger value="model3d" className="text-sm">
+            <Box className="mr-1.5 h-3.5 w-3.5" />
+            3D 模型
+          </TabsTrigger>
           <TabsTrigger value="tasks" className="text-sm">
             诊断历史（{tasks.length}）
           </TabsTrigger>
@@ -467,7 +473,57 @@ export default function StationDetailPage() {
         </TabsContent>
 
         {/* ============================================================ */}
-        {/* Tab 3：历史诊断任务时间线（PRD §4.5） */}
+        {/* Tab 3：3D 电站模型（PRD §4.6 渐进式可视化） */}
+        {/* ============================================================ */}
+        <TabsContent value="model3d" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Box className="h-4 w-4 text-zinc-500" />
+                3D 电站可视化
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* 图例 */}
+              <div className="flex flex-wrap items-center gap-4 mb-4 text-xs text-zinc-500">
+                {subStations.map((sub, i) => (
+                  <span key={sub.id} className="flex items-center gap-1.5">
+                    <span
+                      className="inline-block h-3 w-3 rounded"
+                      style={{ backgroundColor: ["#3B82F6", "#F59E0B", "#10B981"][i % 3] }}
+                    />
+                    {sub.name}
+                  </span>
+                ))}
+              </div>
+              <div className="h-[480px] rounded-lg overflow-hidden">
+                <Station3DCanvas
+                  stage={6}
+                  longitude={station.longitude}
+                  latitude={station.latitude}
+                  subStations={subStations.map((sub, i): SubStation3D => ({
+                    id: sub.id,
+                    name: sub.name,
+                    dcCapacity: sub.dc_capacity,
+                    tiltAngle: sub.tilt_angle,
+                    azimuth: sub.azimuth,
+                    invCount: sub.inv_count,
+                    invAcPower: sub.inv_ac_power,
+                    healthStatus: i === 0 ? "good" : i === 1 ? "warning" : "good",
+                  }))}
+                  hasDiagnosis
+                  healthScore={82}
+                />
+              </div>
+              <p className="mt-3 text-xs text-zinc-400 text-center">
+                阶段 6（数据已接入）— 拖动鼠标旋转/缩放，滚动查看细节 (PRD §4.6.2)
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ============================================================ */}
+        {/* Tab 4：历史诊断任务时间线（PRD §4.5） */}
         {/* ============================================================ */}
         <TabsContent value="tasks" className="space-y-4">
           {/* 对比操作栏 */}
