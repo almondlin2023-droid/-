@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { getDB } from "@/lib/data-access";
 
 export async function POST(
   request: NextRequest,
@@ -15,7 +16,13 @@ export async function POST(
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
-  // TODO: 替换为真实引擎调用
+  const db = getDB();
+  if (db) {
+    await db.from("diagnosis_tasks")
+      .update({ status: "analyzing" }).eq("id", id).eq("owner_id", userId);
+  }
+
+  // TODO: 替换为真实引擎调用（POST /engine/re-analyze → Celery task）
   return NextResponse.json({
     data: {
       task_id: id,

@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { MOCK_TASKS } from "@/lib/mock-data";
+import { getDB } from "@/lib/data-access";
 
 export async function GET(
   request: NextRequest,
@@ -15,11 +16,18 @@ export async function GET(
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
+  const db = getDB();
+  if (db) {
+    const { data: task, error } = await db.from("diagnosis_tasks")
+      .select("*").eq("id", id).eq("owner_id", userId).single();
+    if (!error && task) return NextResponse.json({ data: task });
+    if (error) return NextResponse.json({ error: "任务不存在" }, { status: 404 });
+  }
+
+  // 回退到 mock 数据
   const task = MOCK_TASKS[id];
   if (!task) {
     return NextResponse.json({ error: "任务不存在" }, { status: 404 });
   }
-
-  // TODO: 替换为真实引擎调用
   return NextResponse.json({ data: task });
 }

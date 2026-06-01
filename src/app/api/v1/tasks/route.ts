@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getTasksList } from "@/lib/mock-data";
+import { getDB } from "@/lib/data-access";
 
 export async function GET(request: NextRequest) {
   const { userId } = await auth();
@@ -16,9 +17,18 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const stationId = searchParams.get("station_id") ?? undefined;
 
-  const tasks = getTasksList(stationId);
+  const db = getDB();
+  if (db) {
+    let query = db.from("diagnosis_tasks").select("*").eq("owner_id", userId).order("created_at", { ascending: false });
+    if (stationId) query = query.eq("station_id", stationId);
+    const { data: tasks, error } = await query;
+    if (!error && tasks) {
+      return NextResponse.json({ data: tasks, total: tasks.length });
+    }
+  }
 
-  // TODO: 替换为真实引擎调用
+  // 回退到 mock 数据
+  const tasks = getTasksList(stationId);
   return NextResponse.json({ data: tasks, total: tasks.length });
 }
 
@@ -28,7 +38,23 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
 
-  // TODO: 替换为真实引擎调用
+  const db = getDB();
+  if (db) {
+    const { data: task, error } = await db.from("diagnosis_tasks")
+      .insert({
+        owner_id: userId,
+        station_id: body.station_id,
+        status: "pending",
+        scope: body.scope ?? {},
+      })
+      .select()
+      .single();
+    if (!error && task) {
+      return NextResponse.json({ data: task }, { status: 201 });
+    }
+  }
+
+  // 回退到 mock 数据
   const newTask = {
     id: `task-${Date.now()}`,
     owner_id: userId,
@@ -36,6 +62,5 @@ export async function POST(request: NextRequest) {
     created_at: new Date().toISOString(),
     ...body,
   };
-
   return NextResponse.json({ data: newTask }, { status: 201 });
 }

@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { MOCK_TASKS } from "@/lib/mock-data";
+import { getDB } from "@/lib/data-access";
 
 export async function GET(
   request: NextRequest,
@@ -22,6 +23,19 @@ export async function GET(
     return NextResponse.json({ error: "请选择 2-3 个任务进行对比" }, { status: 400 });
   }
 
+  const db = getDB();
+  if (db) {
+    const { data: tasks, error } = await db.from("diagnosis_tasks")
+      .select("*").in("id", taskIds).eq("station_id", stationId).eq("owner_id", userId);
+    if (!error && tasks && tasks.length >= 2) {
+      return NextResponse.json({ data: tasks });
+    }
+    if (tasks && tasks.length < 2) {
+      return NextResponse.json({ error: "所选任务不存在或不属于同一电站" }, { status: 404 });
+    }
+  }
+
+  // 回退到 mock 数据
   const tasks = taskIds
     .map((tid) => MOCK_TASKS[tid])
     .filter(Boolean)
@@ -31,6 +45,5 @@ export async function GET(
     return NextResponse.json({ error: "所选任务不存在或不属于同一电站" }, { status: 404 });
   }
 
-  // TODO: 替换为真实引擎调用
   return NextResponse.json({ data: tasks });
 }

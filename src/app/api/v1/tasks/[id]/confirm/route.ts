@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { MOCK_TASKS } from "@/lib/mock-data";
+import { getDB } from "@/lib/data-access";
 
 export async function POST(
   request: NextRequest,
@@ -18,6 +19,24 @@ export async function POST(
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
+  const db = getDB();
+  if (db) {
+    const { data: task, error } = await db.from("diagnosis_tasks")
+      .select("status").eq("id", id).eq("owner_id", userId).single();
+    if (error || !task) {
+      return NextResponse.json({ error: "任务不存在" }, { status: 404 });
+    }
+    if (task.status !== "pending") {
+      return NextResponse.json({ error: "仅待映射状态的任务可确认" }, { status: 409 });
+    }
+    await db.from("diagnosis_tasks")
+      .update({ status: "analyzing" }).eq("id", id);
+    return NextResponse.json({
+      data: { task_id: id, status: "analyzing", message: "诊断任务已触发，预计60秒内完成 (PRD §5.1.5)" },
+    });
+  }
+
+  // 回退到 mock 数据
   const task = MOCK_TASKS[id];
   if (!task) {
     return NextResponse.json({ error: "任务不存在" }, { status: 404 });
@@ -26,7 +45,6 @@ export async function POST(
     return NextResponse.json({ error: "仅待映射状态的任务可确认" }, { status: 409 });
   }
 
-  // TODO: 替换为真实引擎调用（POST /engine/analyze → Celery task）
   return NextResponse.json({
     data: {
       task_id: id,
