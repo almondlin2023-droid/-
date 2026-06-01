@@ -7,6 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { MOCK_TASKS } from "@/lib/mock-data";
 
 export async function POST(
@@ -14,6 +15,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const task = MOCK_TASKS[id];
   if (!task) {

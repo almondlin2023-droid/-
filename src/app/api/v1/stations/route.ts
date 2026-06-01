@@ -9,6 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { MOCK_STATIONS, MOCK_SUB_STATIONS } from "@/lib/mock-data";
 
 /**
@@ -16,9 +17,8 @@ import { MOCK_STATIONS, MOCK_SUB_STATIONS } from "@/lib/mock-data";
  * 获取当前用户的电站列表，可选筛选状态
  */
 export async function GET(request: NextRequest) {
-  // TODO: 从 Clerk 获取当前用户 ID
-  // const { userId } = await auth();
-  // if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
@@ -46,13 +46,15 @@ export async function GET(request: NextRequest) {
  * 创建新电站（含子场站）
  */
 export async function POST(request: NextRequest) {
-  // TODO: Clerk 认证
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const body = await request.json();
 
   // TODO: 替换为真实引擎调用
   const newStation = {
     id: `st-${Date.now()}`,
-    owner_id: "user-1", // TODO: 替换为真实 userId
+    owner_id: userId,
     status: "active" as const,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

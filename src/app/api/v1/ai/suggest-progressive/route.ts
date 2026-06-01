@@ -5,10 +5,13 @@
  * （如三列重复结构、对称列对等），给出后续字段的推荐。
  */
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { MOCK_AI_PROGRESSIVE_SUGGESTIONS } from "@/lib/mock-data";
 
 export async function POST(request: NextRequest) {
-  // TODO: Clerk 认证
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const body = await request.json();
   // body: { file_storage_path, confirmed_fields: [{col_index, field_code}] }
 

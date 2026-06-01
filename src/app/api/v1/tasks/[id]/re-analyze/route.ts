@@ -5,12 +5,16 @@
  * 用于电站配置变更后重新评估历史任务。
  */
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   // TODO: 替换为真实引擎调用
   return NextResponse.json({
     data: {

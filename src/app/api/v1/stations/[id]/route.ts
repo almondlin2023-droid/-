@@ -7,6 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { MOCK_STATIONS, MOCK_SUB_STATIONS } from "@/lib/mock-data";
 
 export async function GET(
@@ -14,7 +15,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  // TODO: Clerk 认证 + 所有权校验
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const station = MOCK_STATIONS.find((s) => s.id === id);
   if (!station) {
@@ -32,6 +34,9 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const body = await request.json();
 
   const station = MOCK_STATIONS.find((s) => s.id === id);
@@ -49,6 +54,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const station = MOCK_STATIONS.find((s) => s.id === id);
   if (!station) {

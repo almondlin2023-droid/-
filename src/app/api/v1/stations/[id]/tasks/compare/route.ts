@@ -4,6 +4,7 @@
  * PRD §4.2.3 任务对比：返回 2-3 个任务并排对比数据。
  */
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { MOCK_TASKS } from "@/lib/mock-data";
 
 export async function GET(
@@ -11,6 +12,9 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: stationId } = await params;
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const { searchParams } = new URL(request.url);
   const taskIds = searchParams.get("task_ids")?.split(",") ?? [];
 

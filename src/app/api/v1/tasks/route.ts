@@ -6,10 +6,12 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { getTasksList } from "@/lib/mock-data";
 
 export async function GET(request: NextRequest) {
-  // TODO: Clerk 认证
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
   const stationId = searchParams.get("station_id") ?? undefined;
@@ -21,13 +23,15 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  // TODO: Clerk 认证
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+
   const body = await request.json();
 
   // TODO: 替换为真实引擎调用
   const newTask = {
     id: `task-${Date.now()}`,
-    owner_id: "user-1",
+    owner_id: userId,
     status: "pending" as const,
     created_at: new Date().toISOString(),
     ...body,
