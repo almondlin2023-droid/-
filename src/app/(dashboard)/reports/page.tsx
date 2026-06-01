@@ -13,7 +13,7 @@
  *   - 支持导出操作（PDF/Excel，PRD §5.3.0 双模态设计）
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import Link from "next/link";
 import {
   FileText,
@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -46,6 +47,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { exportExcel, exportJSON } from "@/lib/export-utils";
 
 // ── 模拟报告数据 ──
 const MOCK_REPORTS = [
@@ -255,10 +257,36 @@ export default function ReportsPage() {
                         导出
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-36">
-                        <DropdownMenuItem>导出 PDF</DropdownMenuItem>
-                        <DropdownMenuItem>导出 Excel</DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => { toast.success("正在生成 PDF..."); window.print(); }}
+                        >
+                          导出 PDF
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            toast.success("正在导出 Excel...");
+                            exportExcel(report.reportNumber, {
+                              "核心指标": [
+                                { 指标: "实际PR", 数值: `${report.summary.pr_actual.toFixed(2)}%` },
+                                { 指标: "基准PR", 数值: `${report.summary.pr_baseline.toFixed(2)}%` },
+                                { 指标: "PR偏差", 数值: `${report.summary.pr_deviation > 0 ? "+" : ""}${report.summary.pr_deviation.toFixed(2)}%` },
+                                { 指标: "电量偏差", 数值: `${(report.summary.energy_deviation_kwh / 10000).toFixed(1)} 万kWh` },
+                                { 指标: "收益偏差", 数值: `¥${report.summary.revenue_deviation.toLocaleString()}` },
+                              ],
+                            });
+                          }}
+                        >
+                          导出 Excel
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem>下载原始数据</DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            toast.success("正在下载原始数据...");
+                            exportJSON(report, `${report.reportNumber}_raw`);
+                          }}
+                        >
+                          下载原始数据
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>

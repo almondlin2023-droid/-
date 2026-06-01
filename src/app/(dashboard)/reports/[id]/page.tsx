@@ -17,7 +17,7 @@
  * 双模态设计（PRD §5.3.0）：在线交互式预览可下钻，导出版为静态PDF/Excel。
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -53,7 +53,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { exportPDF, exportExcel, exportJSON } from "@/lib/export-utils";
 
 // ── 模拟报告完整数据 ──
 const MOCK_REPORT = {
@@ -228,6 +230,71 @@ export default function ReportDetailPage() {
 
   const deviationIsPositive = report.summary.pr_deviation > 0;
 
+  // ── 导出处理 ──
+  const buildExportData = useCallback(() => {
+    const losses = report.waterfall.filter((w) => w.isLoss);
+    return {
+      stationName: report.stationName,
+      reportNumber: report.reportNumber,
+      prSummary: [
+        { label: "实际PR", value: `${report.summary.pr_actual.toFixed(2)}%` },
+        { label: "基准PR", value: `${report.summary.pr_baseline.toFixed(2)}%` },
+        { label: "PR偏差", value: `${report.summary.pr_deviation > 0 ? "+" : ""}${report.summary.pr_deviation.toFixed(2)}%` },
+        { label: "实际发电量", value: `${(report.summary.energy_actual_kwh / 10000).toFixed(1)} 万kWh` },
+        { label: "电量偏差", value: `${report.summary.energy_deviation_kwh > 0 ? "+" : ""}${(report.summary.energy_deviation_kwh / 10000).toFixed(1)} 万kWh` },
+        { label: "收益偏差", value: `${report.summary.revenue_deviation > 0 ? "+" : ""}¥${report.summary.revenue_deviation.toLocaleString()}` },
+      ],
+      losses: losses.map((l) => ({
+        label: l.label,
+        lossRate: `${l.value.toFixed(2)}%`,
+        lossKwh: `${Math.round(l.value * 60).toLocaleString()} kWh`,
+        category: "已诊断损失",
+      })),
+      monthlyPR: report.monthlyPRTable.map((m) => ({
+        month: m.month,
+        prActual: `${m.prActual.toFixed(2)}%`,
+        prBaseline: `${m.prBaseline.toFixed(2)}%`,
+        prDeviation: `${m.prDeviation.toFixed(2)}%`,
+      })),
+      faults: report.lossBreakdown
+        .filter((lb) => lb.events && lb.events.length > 0)
+        .flatMap((lb) => lb.events.map((ev) => ({
+          device: ev.device,
+          type: lb.label,
+          duration: `${ev.durationH} 小时`,
+          lossKwh: `${ev.lossKwh.toLocaleString()} kWh`,
+        }))),
+      offlineEvents: report.offlineEvents.map((o) => ({
+        logger: o.loggerSn,
+        hours: `${o.offlineHours}h`,
+        count: `${o.offlineCount}次`,
+        dates: o.exampleDates.join(", "),
+      })),
+    };
+  }, [report]);
+
+  const handleExportPDF = () => {
+    toast.success("正在生成 PDF 报告...");
+    exportPDF(`${report.stationName} — 健康诊断报告`);
+  };
+
+  const handleExportExcel = () => {
+    toast.success("正在导出 Excel（CSV格式）...");
+    const data = buildExportData();
+    exportExcel(report.reportNumber, {
+      "核心指标": data.prSummary.map((i) => ({ 指标: i.label, 数值: i.value })),
+      "损失分解": data.losses.map((l) => ({ 损失项: l.label, 损失率: l.lossRate, 损失电量: l.lossKwh, 类别: l.category })),
+      "月度PR": data.monthlyPR.map((m) => ({ 月份: m.month, 实际PR: m.prActual, 基准PR: m.prBaseline, PR偏差: m.prDeviation })),
+      "故障事件": data.faults.map((f) => ({ 设备: f.device, 故障类型: f.type, 持续时长: f.duration, 损失电量: f.lossKwh })),
+      "离线事件": data.offlineEvents.map((o) => ({ 采集器: o.logger, 离线时长: o.hours, 离线次数: o.count, 日期: o.dates })),
+    });
+  };
+
+  const handleExportRawData = () => {
+    toast.success("正在下载诊断原始数据...");
+    exportJSON(report, `${report.reportNumber}_raw`);
+  };
+
   return (
     <div className="space-y-8">
       {/* ── 报告头部 ── */}
@@ -261,10 +328,10 @@ export default function ReportDetailPage() {
               导出报告
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem>导出 PDF（A4排版）</DropdownMenuItem>
-              <DropdownMenuItem>导出 Excel（多Sheet）</DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportPDF}>导出 PDF（A4排版）</DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportExcel}>导出 Excel（多Sheet）</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>下载诊断原始数据</DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportRawData}>下载诊断原始数据</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
