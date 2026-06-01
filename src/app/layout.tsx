@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { QueryProvider } from "@/lib/query-provider";
 import "./globals.css";
 
 /*
@@ -42,10 +43,12 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <body className="min-h-dvh flex flex-col bg-zinc-50 text-zinc-900">
-          <TooltipProvider>
-            {children}
-            <Toaster richColors closeButton />
-          </TooltipProvider>
+          <QueryProvider>
+            <TooltipProvider>
+              {children}
+              <Toaster richColors closeButton />
+            </TooltipProvider>
+          </QueryProvider>
         </body>
       </html>
     </ClerkProvider>

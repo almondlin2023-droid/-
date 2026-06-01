@@ -25,6 +25,7 @@ import {
   MoreHorizontal,
   Trash2,
   Archive,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,75 +46,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useStations } from "@/lib/data-hooks";
 import type { Station } from "@/types/diagnosis";
-
-// ── 开发阶段模拟数据（后续替换为 API 调用） ──
-const MOCK_STATIONS: Station[] = [
-  {
-    id: "st-001",
-    owner_id: "user-1",
-    name: "西郊分布式光伏电站",
-    longitude: 120.1234,
-    latitude: 31.5678,
-    timezone: "Asia/Shanghai",
-    resource_zone: "III",
-    grid_conn_date: "2023-06-15",
-    grid_voltage: 10,
-    feed_in_price: 0.391,
-    module_type: "单晶",
-    module_model: "LR5-72HPH-545M",
-    module_power: 545,
-    temp_coeff: -0.0035,
-    status: "active",
-    created_at: "2024-01-15T08:00:00Z",
-    updated_at: "2025-03-20T10:30:00Z",
-  },
-  {
-    id: "st-002",
-    owner_id: "user-1",
-    name: "东部开发区屋顶光伏",
-    longitude: 121.4567,
-    latitude: 31.2345,
-    timezone: "Asia/Shanghai",
-    resource_zone: "III",
-    grid_conn_date: "2022-09-01",
-    grid_voltage: 10,
-    feed_in_price: 0.415,
-    module_type: "多晶",
-    module_model: "JKM550M-72HL4",
-    module_power: 550,
-    temp_coeff: -0.0037,
-    status: "active",
-    created_at: "2023-11-20T08:00:00Z",
-    updated_at: "2025-02-28T14:00:00Z",
-  },
-  {
-    id: "st-003",
-    owner_id: "user-1",
-    name: "北部物流园光伏阵列",
-    longitude: 119.9876,
-    latitude: 32.3456,
-    timezone: "Asia/Shanghai",
-    resource_zone: "II",
-    grid_conn_date: "2021-03-10",
-    grid_voltage: 35,
-    feed_in_price: 0.391,
-    module_type: "单晶",
-    module_model: "LR5-72HPH-540M",
-    module_power: 540,
-    temp_coeff: -0.0035,
-    status: "archived",
-    created_at: "2023-06-01T08:00:00Z",
-    updated_at: "2024-12-01T09:00:00Z",
-  },
-];
 
 // 排序方式定义
 type SortField = "name" | "updated_at" | "resource_zone";
 type SortDirection = "asc" | "desc";
 
 export default function StationsPage() {
-  const [stations] = useState<Station[]>(MOCK_STATIONS);
+  const { data: stations, isLoading, isError } = useStations();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("all");
   const [sortField, setSortField] = useState<SortField>("updated_at");
@@ -121,7 +62,7 @@ export default function StationsPage() {
 
   // ── 筛选 + 排序后的电站列表 ──
   const filteredStations = useMemo(() => {
-    let result = [...stations];
+    let result = stations ? [...stations] : [];
 
     // 搜索过滤：按名称模糊匹配
     if (searchQuery.trim()) {
@@ -243,7 +184,18 @@ export default function StationsPage() {
       </div>
 
       {/* 电站卡片网格 */}
-      {filteredStations.length === 0 ? (
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <Loader2 className="h-12 w-12 text-zinc-300 animate-spin" />
+          <h3 className="mt-4 text-sm font-medium text-zinc-500">加载中...</h3>
+        </div>
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <Zap className="h-12 w-12 text-zinc-300" />
+          <h3 className="mt-4 text-sm font-medium text-zinc-500">加载失败</h3>
+          <p className="mt-1 text-xs text-zinc-400">请检查网络连接后刷新重试</p>
+        </div>
+      ) : filteredStations.length === 0 ? (
         // 空状态
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <Building2 className="h-12 w-12 text-zinc-300" />
