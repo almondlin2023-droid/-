@@ -1,11 +1,45 @@
+"use client";
+
+/**
+ * 首页（公开入口）
+ *
+ * 未登录用户看到产品介绍 + 登录/注册入口；
+ * 已登录用户看到欢迎信息 + 跳转 Dashboard。
+ */
+
 import Link from "next/link";
 import { ArrowRight, Zap, BarChart3, FileSearch } from "lucide-react";
+import { useAuth } from "@clerk/nextjs";
+import { Button } from "@/components/ui/button";
 
 export default function Home() {
+  const { isSignedIn } = useAuth();
+
   return (
     <div className="flex flex-col flex-1">
+      {/* Header */}
+      <header className="flex items-center justify-end px-6 py-4">
+        {isSignedIn ? (
+          <Link href="/stations">
+            <Button variant="outline" size="sm">
+              进入工作台
+              <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+            </Button>
+          </Link>
+        ) : (
+          <div className="flex items-center gap-3">
+            <Link href="/sign-in">
+              <Button variant="ghost" size="sm">登录</Button>
+            </Link>
+            <Link href="/sign-up">
+              <Button size="sm">免费注册</Button>
+            </Link>
+          </div>
+        )}
+      </header>
+
       {/* Hero */}
-      <section className="px-6 py-24 md:py-36">
+      <section className="px-6 py-20 md:py-32">
         <div className="mx-auto max-w-4xl">
           <h1 className="text-4xl font-semibold tracking-tighter leading-none md:text-6xl">
             光伏健康诊断工具
@@ -15,18 +49,28 @@ export default function Home() {
             输出完整的电站健康评估报告 + 损失分解 + 问题清单 + 优化建议。
           </p>
           <div className="mt-8 flex flex-col gap-4 sm:flex-row">
+            {isSignedIn ? (
+              <Link
+                href="/diagnose/upload"
+                className="inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 active:translate-y-px"
+              >
+                开始诊断
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            ) : (
+              <Link
+                href="/sign-up"
+                className="inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 active:translate-y-px"
+              >
+                免费注册，开始使用
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            )}
             <Link
-              href="/diagnose/upload"
-              className="inline-flex items-center gap-2 rounded-lg bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 active:translate-y-px"
-            >
-              开始诊断
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href="/stations"
+              href={isSignedIn ? "/stations" : "/sign-in"}
               className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-6 py-3 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 active:translate-y-px"
             >
-              电站管理
+              {isSignedIn ? "电站管理" : "已有账号？登录"}
             </Link>
           </div>
         </div>
