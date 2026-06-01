@@ -13,7 +13,7 @@
  *   - 支持导出操作（PDF/Excel，PRD §5.3.0 双模态设计）
  */
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
   FileText,
@@ -26,6 +26,7 @@ import {
   ExternalLink,
   Calendar,
   AlertCircle,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,67 +48,23 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { useTasks, useStations } from "@/lib/data-hooks";
 import { exportExcel, exportJSON } from "@/lib/export-utils";
-
-// ── 模拟报告数据 ──
-const MOCK_REPORTS = [
-  {
-    id: "task-004",
-    stationId: "st-001",
-    stationName: "西郊分布式光伏电站",
-    reportNumber: "PVAI20250315103000001",
-    createdAt: "2025-03-15T10:30:00Z",
-    dataRange: { start: "2025-03-01", end: "2025-03-15" },
-    summary: {
-      pr_actual: 85.2, pr_baseline: 73.38, pr_deviation: 11.82,
-      energy_actual_kwh: 102300, energy_baseline_kwh: 88100, energy_deviation_kwh: 14200,
-      revenue_actual: 39999, revenue_baseline: 34445, revenue_deviation: 5554,
-    },
-    issuesCount: 1,
-    subStations: 3,
-  },
-  {
-    id: "task-003",
-    stationId: "st-002",
-    stationName: "东部开发区屋顶光伏",
-    reportNumber: "PVAI20250310150000002",
-    createdAt: "2025-03-10T15:00:00Z",
-    dataRange: { start: "2025-03-01", end: "2025-03-10" },
-    summary: {
-      pr_actual: 79.5, pr_baseline: 72.1, pr_deviation: 7.4,
-      energy_actual_kwh: 85000, energy_baseline_kwh: 77100, energy_deviation_kwh: 7900,
-      revenue_actual: 33235, revenue_baseline: 30146, revenue_deviation: 3089,
-    },
-    issuesCount: 3,
-    subStations: 2,
-  },
-  {
-    id: "task-001",
-    stationId: "st-001",
-    stationName: "西郊分布式光伏电站",
-    reportNumber: "PVAI20250105160000001",
-    createdAt: "2025-01-05T16:00:00Z",
-    dataRange: { start: "2025-01-01", end: "2025-01-05" },
-    summary: {
-      pr_actual: 78.4, pr_baseline: 66.0, pr_deviation: 12.4,
-      energy_actual_kwh: 92000, energy_baseline_kwh: 77500, energy_deviation_kwh: 14500,
-      revenue_actual: 35972, revenue_baseline: 30303, revenue_deviation: 5669,
-    },
-    issuesCount: 5,
-    subStations: 2,
-  },
-];
+import type { Station, Task } from "@/types/diagnosis";
+import type { MockTask } from "@/lib/mock-data";
 
 export default function ReportsPage() {
-  const [reports] = useState(MOCK_REPORTS);
+  const { data: tasks, isLoading, isError } = useTasks();
+  const { data: stations } = useStations();
   const [searchQuery, setSearchQuery] = useState("");
   const [stationFilter, setStationFilter] = useState<string>("all");
 
-  // 获取电站列表供筛选
-  const stations = useMemo(
-    () => [...new Map(reports.map((r) => [r.stationId, { id: r.stationId, name: r.stationName }])).values()],
-    [reports]
-  );
+  // 仅展示已完成任务（即为报告）
+  type CompletedMockTask = MockTask & { summary: NonNullable<MockTask["summary"]> };
+  const reports = useMemo(() => {
+    const all = (tasks as MockTask[] | undefined) ?? [];
+    return all.filter((t) => t.status === "completed" && t.summary) as CompletedMockTask[];
+  }, [tasks]);
 
   // 筛选 + 排序
   const filteredReports = useMemo(() => {
@@ -117,16 +74,16 @@ export default function ReportsPage() {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(
         (r) =>
-          r.stationName.toLowerCase().includes(q) ||
-          r.reportNumber.toLowerCase().includes(q)
+          r.stationName?.toLowerCase().includes(q) ||
+          r.report_number?.toLowerCase().includes(q)
       );
     }
 
     if (stationFilter !== "all") {
-      result = result.filter((r) => r.stationId === stationFilter);
+      result = result.filter((r) => r.station_id === stationFilter);
     }
 
-    result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     return result;
   }, [reports, searchQuery, stationFilter]);
 
@@ -160,7 +117,7 @@ export default function ReportsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部电站</SelectItem>
-            {stations.map((s) => (
+            {(stations ?? []).map((s: Station) => (
               <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
             ))}
           </SelectContent>
@@ -168,7 +125,18 @@ export default function ReportsPage() {
       </div>
 
       {/* 报告列表 */}
-      {filteredReports.length === 0 ? (
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <Loader2 className="h-12 w-12 text-zinc-300 animate-spin" />
+          <h3 className="mt-4 text-sm font-medium text-zinc-500">加载中...</h3>
+        </div>
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <FileText className="h-12 w-12 text-zinc-300" />
+          <h3 className="mt-4 text-sm font-medium text-zinc-500">加载失败</h3>
+          <p className="mt-1 text-xs text-zinc-400">请检查网络连接后刷新重试</p>
+        </div>
+      ) : filteredReports.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <FileText className="h-12 w-12 text-zinc-300" />
           <h3 className="mt-4 text-sm font-medium text-zinc-500">暂无报告</h3>
@@ -204,22 +172,22 @@ export default function ReportsPage() {
                         href={`/reports/${report.id}`}
                         className="text-base font-semibold text-zinc-900 hover:text-zinc-600 transition-colors"
                       >
-                        {report.stationName}
+                        {report.stationName ?? report.station_id}
                       </Link>
                       <Badge variant="secondary" className="text-[10px]">诊断报告</Badge>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-400">
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3 w-3" />
-                        {new Date(report.createdAt).toLocaleDateString("zh-CN", {
+                        {new Date(report.created_at).toLocaleDateString("zh-CN", {
                           year: "numeric", month: "2-digit", day: "2-digit",
                         })}
                       </span>
                       <span>
-                        数据：{report.dataRange.start} ~ {report.dataRange.end}
+                        数据：{report.scope.date_range.start} ~ {report.scope.date_range.end}
                       </span>
-                      <span>{report.subStations} 个子场站</span>
-                      <span className="font-mono text-[10px]">{report.reportNumber}</span>
+                      <span>{report.scope.sub_station_ids.length} 个子场站</span>
+                      <span className="font-mono text-[10px]">{report.report_number}</span>
                     </div>
                     {/* 关键指标行 */}
                     <div className="mt-3 grid grid-cols-3 gap-4 md:grid-cols-5">
@@ -237,8 +205,8 @@ export default function ReportsPage() {
                       />
                       <MiniMetric
                         label="发现问题"
-                        value={`${report.issuesCount} 项`}
-                        positive={report.issuesCount === 0}
+                        value={`${(report.issues ?? 0)} 项`}
+                        positive={(report.issues ?? 0) === 0}
                       />
                     </div>
                   </div>
@@ -265,7 +233,7 @@ export default function ReportsPage() {
                         <DropdownMenuItem
                           onClick={() => {
                             toast.success("正在导出 Excel...");
-                            exportExcel(report.reportNumber, {
+                            exportExcel(report.report_number ?? report.id, {
                               "核心指标": [
                                 { 指标: "实际PR", 数值: `${report.summary.pr_actual.toFixed(2)}%` },
                                 { 指标: "基准PR", 数值: `${report.summary.pr_baseline.toFixed(2)}%` },
@@ -282,7 +250,7 @@ export default function ReportsPage() {
                         <DropdownMenuItem
                           onClick={() => {
                             toast.success("正在下载原始数据...");
-                            exportJSON(report, `${report.reportNumber}_raw`);
+                            exportJSON(report, `${report.report_number ?? report.id}_raw`);
                           }}
                         >
                           下载原始数据

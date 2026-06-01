@@ -40,7 +40,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import type { Task } from "@/types/diagnosis";
+import { useTasks, useStations } from "@/lib/data-hooks";
+import type { Station, Task } from "@/types/diagnosis";
+
+/** API 返回的任务列表项包含扩展字段 */
+type TaskListItem = Task & {
+  stationName?: string;
+  pr?: number;
+  issues?: number;
+  equivalentHours?: number;
+};
 
 // ── 任务状态配置 ──
 const TASK_STATUS_CONFIG: Record<Task["status"], { icon: React.ComponentType<{ className?: string }>; label: string; color: string }> = {
@@ -50,62 +59,18 @@ const TASK_STATUS_CONFIG: Record<Task["status"], { icon: React.ComponentType<{ c
   failed: { icon: XCircle, label: "已失败", color: "text-red-600 bg-red-50" },
 };
 
-// ── 模拟数据 ──
-const MOCK_TASKS: (Task & { stationName?: string; pr?: number; issues?: number; equivalentHours?: number })[] = [
-  {
-    id: "task-006", station_id: "st-001", owner_id: "user-1",
-    status: "pending", stationName: "西郊分布式光伏电站",
-    scope: { sub_station_ids: ["sub-001"], date_range: { start: "2025-04-01", end: "2025-04-15" } },
-    created_at: "2025-04-01T09:00:00Z",
-  },
-  {
-    id: "task-005", station_id: "st-001", owner_id: "user-1",
-    status: "analyzing", stationName: "西郊分布式光伏电站",
-    scope: { sub_station_ids: ["sub-001", "sub-002", "sub-003"], date_range: { start: "2025-03-15", end: "2025-03-31" } },
-    created_at: "2025-03-31T08:30:00Z",
-  },
-  {
-    id: "task-004", station_id: "st-001", owner_id: "user-1",
-    status: "completed", stationName: "西郊分布式光伏电站",
-    scope: { sub_station_ids: ["sub-001", "sub-002", "sub-003"], date_range: { start: "2025-03-01", end: "2025-03-15" } },
-    summary: { pr_actual: 85.2, pr_baseline: 73.38, pr_deviation: 11.82, energy_actual_kwh: 102300, energy_baseline_kwh: 88100, energy_deviation_kwh: 14200, revenue_actual: 39999, revenue_baseline: 34445, revenue_deviation: 5554 },
-    report_number: "PVAI20250315103000001",
-    created_at: "2025-03-15T10:30:00Z", completed_at: "2025-03-15T10:32:00Z",
-    pr: 85.2, issues: 1, equivalentHours: 92,
-  },
-  {
-    id: "task-003", station_id: "st-002", owner_id: "user-1",
-    status: "completed", stationName: "东部开发区屋顶光伏",
-    scope: { sub_station_ids: ["sub-004"], date_range: { start: "2025-03-01", end: "2025-03-10" } },
-    summary: { pr_actual: 79.5, pr_baseline: 72.1, pr_deviation: 7.4, energy_actual_kwh: 85000, energy_baseline_kwh: 77100, energy_deviation_kwh: 7900, revenue_actual: 33235, revenue_baseline: 30146, revenue_deviation: 3089 },
-    report_number: "PVAI20250310150000002",
-    created_at: "2025-03-10T15:00:00Z", completed_at: "2025-03-10T15:01:30Z",
-    pr: 79.5, issues: 3, equivalentHours: 78,
-  },
-  {
-    id: "task-002", station_id: "st-001", owner_id: "user-1",
-    status: "failed", stationName: "西郊分布式光伏电站",
-    scope: { sub_station_ids: ["sub-001"], date_range: { start: "2025-02-28", end: "2025-02-28" } },
-    error_message: "数据完整度不足：上传文件缺失交流电流(D5)和当日发电量(D9)字段，无法执行诊断",
-    created_at: "2025-02-28T11:00:00Z",
-  },
-];
-
 export default function TasksPage() {
-  const [tasks] = useState(MOCK_TASKS);
+  const { data: tasks, isLoading, isError } = useTasks();
+  const { data: stations } = useStations();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<Task["status"] | "all">("all");
   const [stationFilter, setStationFilter] = useState<string>("all");
 
-  // ── 获取电站列表供筛选 ──
-  const stations = useMemo(
-    () => [...new Map(tasks.map((t) => [t.station_id, { id: t.station_id, name: t.stationName }])).values()],
-    [tasks]
-  );
+  const taskList = tasks as TaskListItem[] | undefined;
 
   // ── 筛选 + 排序 ──
   const filteredTasks = useMemo(() => {
-    let result = [...tasks];
+    let result = taskList ? [...taskList] : [];
 
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
@@ -129,7 +94,7 @@ export default function TasksPage() {
     result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     return result;
-  }, [tasks, searchQuery, statusFilter, stationFilter]);
+  }, [taskList, searchQuery, statusFilter, stationFilter]);
 
   return (
     <div className="space-y-6">
@@ -179,7 +144,7 @@ export default function TasksPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部电站</SelectItem>
-            {stations.map((s) => (
+            {(stations ?? []).map((s: Station) => (
               <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
             ))}
           </SelectContent>
@@ -187,7 +152,18 @@ export default function TasksPage() {
       </div>
 
       {/* 任务列表 */}
-      {filteredTasks.length === 0 ? (
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <Loader2 className="h-12 w-12 text-zinc-300 animate-spin" />
+          <h3 className="mt-4 text-sm font-medium text-zinc-500">加载中...</h3>
+        </div>
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <ClipboardList className="h-12 w-12 text-zinc-300" />
+          <h3 className="mt-4 text-sm font-medium text-zinc-500">加载失败</h3>
+          <p className="mt-1 text-xs text-zinc-400">请检查网络连接后刷新重试</p>
+        </div>
+      ) : filteredTasks.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <ClipboardList className="h-12 w-12 text-zinc-300" />
           <h3 className="mt-4 text-sm font-medium text-zinc-500">没有找到匹配的任务</h3>

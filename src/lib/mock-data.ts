@@ -67,6 +67,16 @@ export interface MockTask extends Task {
   files?: MockFile[];
   mappingsCount?: number;
   losses?: MockLossItem[];
+  compareIssues?: CompareIssue[];
+  compareLosses?: CompareLossItem[];
+}
+
+export interface CompareIssue {
+  type: string; label: string; resolved: boolean; severity: "high" | "medium";
+}
+
+export interface CompareLossItem {
+  key: string; label: string; lossRate: number; lossKwh: number; isFault: boolean;
 }
 
 export interface MockFile {
@@ -113,6 +123,20 @@ export const MOCK_TASKS: Record<string, MockTask> = {
       { key: "inverter_eff", label: "逆变器效率", lossRate: 1.85, lossKwh: 1890, diagnosed: false },
       { key: "degradation", label: "自然衰减", lossRate: 1.12, lossKwh: 1146, diagnosed: false },
     ],
+    compareIssues: [
+      { type: "string_outage", label: "掉串", resolved: true, severity: "high" },
+      { type: "shadow", label: "阴影遮挡", resolved: false, severity: "medium" },
+      { type: "clipping", label: "限额", resolved: true, severity: "medium" },
+      { type: "soiling", label: "灰尘", resolved: false, severity: "medium" },
+      { type: "offline", label: "离线", resolved: true, severity: "high" },
+    ],
+    compareLosses: [
+      { key: "installation", label: "安装条件", lossRate: 2.4, lossKwh: 2458, isFault: false },
+      { key: "shadow", label: "阴影", lossRate: 3.3, lossKwh: 3380, isFault: true },
+      { key: "soiling", label: "灰尘", lossRate: 2.2, lossKwh: 2253, isFault: true },
+      { key: "fault_string", label: "掉串", lossRate: 0.5, lossKwh: 512, isFault: true },
+      { key: "fault_clip", label: "限额", lossRate: 0.3, lossKwh: 307, isFault: true },
+    ],
   },
   "task-003": {
     id: "task-003", station_id: "st-002", owner_id: "user-1",
@@ -152,6 +176,20 @@ export const MOCK_TASKS: Record<string, MockTask> = {
       { key: "fault_string", label: "掉串损失", lossRate: 4.2, lossKwh: 3864, diagnosed: true },
       { key: "shadow", label: "阴影损失", lossRate: 3.8, lossKwh: 3496, diagnosed: true },
       { key: "soiling", label: "灰尘损失", lossRate: 2.9, lossKwh: 2668, diagnosed: false },
+    ],
+    compareIssues: [
+      { type: "string_outage", label: "掉串", resolved: false, severity: "high" },
+      { type: "shadow", label: "阴影遮挡", resolved: false, severity: "medium" },
+      { type: "clipping", label: "限额", resolved: false, severity: "medium" },
+      { type: "soiling", label: "灰尘", resolved: false, severity: "medium" },
+      { type: "offline", label: "离线", resolved: false, severity: "high" },
+    ],
+    compareLosses: [
+      { key: "installation", label: "安装条件", lossRate: 2.5, lossKwh: 2300, isFault: false },
+      { key: "shadow", label: "阴影", lossRate: 3.8, lossKwh: 3496, isFault: true },
+      { key: "soiling", label: "灰尘", lossRate: 2.9, lossKwh: 2668, isFault: true },
+      { key: "fault_string", label: "掉串", lossRate: 4.2, lossKwh: 3864, isFault: true },
+      { key: "fault_clip", label: "限额", lossRate: 1.8, lossKwh: 1656, isFault: true },
     ],
   },
 };

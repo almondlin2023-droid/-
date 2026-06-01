@@ -12,7 +12,7 @@
  *   3. 系统解析文件 → AI 字段识别 → 跳转到映射确认页
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -47,6 +47,8 @@ import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useStations } from "@/lib/data-hooks";
+import type { Station } from "@/types/diagnosis";
 
 // ── 支持的文件格式（PRD §5.1.7） ──
 const ACCEPTED_FORMATS = {
@@ -75,12 +77,6 @@ function getFormatKey(fileName: string): string {
   return ext;
 }
 
-// ── 模拟已有电站列表（用于选择诊断范围） ──
-const MOCK_STATIONS = [
-  { id: "st-001", name: "西郊分布式光伏电站", subCount: 3 },
-  { id: "st-002", name: "东部开发区屋顶光伏", subCount: 2 },
-];
-
 interface UploadedFile {
   id: string;
   name: string;
@@ -95,6 +91,7 @@ export default function UploadPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedStationId = searchParams.get("station_id");
+  const { data: stations } = useStations();
 
   // ── 状态 ──
   const [stationId, setStationId] = useState<string>(preselectedStationId ?? "new");
@@ -243,9 +240,9 @@ export default function UploadPage() {
                         </span>
                       </SelectItem>
                       <Separator />
-                      {MOCK_STATIONS.map((s) => (
+                      {(stations ?? []).map((s: Station) => (
                         <SelectItem key={s.id} value={s.id}>
-                          {s.name}（{s.subCount} 个子场站）
+                          {s.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

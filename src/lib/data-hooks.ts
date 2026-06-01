@@ -94,7 +94,7 @@ export function useTask(id: string | undefined) {
 export function useTaskStatus(id: string | undefined, { enabled = true } = {}) {
   return useQuery({
     queryKey: ["task", id, "status"],
-    queryFn: () => fetchJSON<{ status: string; progress: number; estimated_remaining_s: number }>(`/api/v1/tasks/${id}/status`),
+    queryFn: () => fetchJSON<{ status: string; progress: number; currentStep: string; estimated_remaining_s: number }>(`/api/v1/tasks/${id}/status`),
     enabled: !!id && enabled,
     refetchInterval: (query) => {
       const data = query.state.data;

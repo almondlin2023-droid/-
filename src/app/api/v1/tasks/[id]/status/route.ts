@@ -24,11 +24,24 @@ export async function GET(
     : task.status === "analyzing" ? Math.min(95, Math.floor(Date.now() / 1000) % 100)
     : 0;
 
+  // 根据进度确定当前步骤
+  const steps = [
+    { at: 0, text: "数据质量检查中..." },
+    { at: 15, text: "GTI 辐照度换面计算(Hay&Davies)..." },
+    { at: 30, text: "PR 计算与基准对比..." },
+    { at: 45, text: "14 项损失管线运行中..." },
+    { at: 65, text: "故障事件识别(5min帧扫描)..." },
+    { at: 80, text: "报告数据聚合与格式化..." },
+    { at: 92, text: "损失优化建议生成中..." },
+  ];
+  const currentStep = [...steps].reverse().find((s) => progress >= s.at)?.text ?? steps[0].text;
+
   // TODO: 替换为真实引擎调用
   return NextResponse.json({
     data: {
       status: task.status,
       progress,
+      currentStep,
       estimated_remaining_s: task.status === "analyzing" ? Math.round((100 - progress) / 3) : 0,
     },
   });

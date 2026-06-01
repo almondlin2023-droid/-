@@ -32,6 +32,8 @@ import {
   Calendar,
   FileText,
   Info,
+  Loader2,
+  ClipboardList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -45,82 +47,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-
-// ── 模拟对比用任务数据 ──
-interface CompareTask {
-  id: string;
-  stationId: string;
-  stationName: string;
-  reportNumber: string;
-  createdAt: string;
-  dataRange: { start: string; end: string };
-  summary: {
-    pr_actual: number; pr_baseline: number; pr_deviation: number;
-    energy_actual_kwh: number; energy_baseline_kwh: number; energy_deviation_kwh: number;
-    revenue_actual: number; revenue_baseline: number; revenue_deviation: number;
-  };
-  issues: { type: string; label: string; resolved: boolean; severity: "high" | "medium" }[];
-  losses: { key: string; label: string; lossRate: number; lossKwh: number; isFault: boolean }[];
-}
-
-const MOCK_COMPARE_TASKS: CompareTask[] = [
-  {
-    id: "task-001", stationId: "st-001", stationName: "西郊分布式光伏电站",
-    reportNumber: "PVAI20250105160000001",
-    createdAt: "2025-01-05T16:00:00Z",
-    dataRange: { start: "2025-01-01", end: "2025-01-05" },
-    summary: {
-      pr_actual: 78.4, pr_baseline: 66.0, pr_deviation: 12.4,
-      energy_actual_kwh: 92000, energy_baseline_kwh: 77500, energy_deviation_kwh: 14500,
-      revenue_actual: 35972, revenue_baseline: 30303, revenue_deviation: 5669,
-    },
-    issues: [
-      { type: "string_outage", label: "掉串", resolved: false, severity: "high" },
-      { type: "shadow", label: "阴影遮挡", resolved: false, severity: "medium" },
-      { type: "clipping", label: "限额", resolved: false, severity: "medium" },
-      { type: "soiling", label: "灰尘", resolved: false, severity: "medium" },
-      { type: "offline", label: "离线", resolved: false, severity: "high" },
-    ],
-    losses: [
-      { key: "installation", label: "安装条件", lossRate: 2.5, lossKwh: 2300, isFault: false },
-      { key: "shadow", label: "阴影", lossRate: 3.8, lossKwh: 3496, isFault: true },
-      { key: "soiling", label: "灰尘", lossRate: 2.9, lossKwh: 2668, isFault: true },
-      { key: "fault_string", label: "掉串", lossRate: 4.2, lossKwh: 3864, isFault: true },
-      { key: "fault_clip", label: "限额", lossRate: 1.8, lossKwh: 1656, isFault: true },
-    ],
-  },
-  {
-    id: "task-004", stationId: "st-001", stationName: "西郊分布式光伏电站",
-    reportNumber: "PVAI20250315103000001",
-    createdAt: "2025-03-15T10:30:00Z",
-    dataRange: { start: "2025-03-01", end: "2025-03-15" },
-    summary: {
-      pr_actual: 85.2, pr_baseline: 73.38, pr_deviation: 11.82,
-      energy_actual_kwh: 102300, energy_baseline_kwh: 88100, energy_deviation_kwh: 14200,
-      revenue_actual: 39999, revenue_baseline: 34445, revenue_deviation: 5554,
-    },
-    issues: [
-      { type: "string_outage", label: "掉串", resolved: true, severity: "high" },
-      { type: "shadow", label: "阴影遮挡", resolved: false, severity: "medium" },
-      { type: "clipping", label: "限额", resolved: true, severity: "medium" },
-      { type: "soiling", label: "灰尘", resolved: false, severity: "medium" },
-      { type: "offline", label: "离线", resolved: true, severity: "high" },
-    ],
-    losses: [
-      { key: "installation", label: "安装条件", lossRate: 2.4, lossKwh: 2458, isFault: false },
-      { key: "shadow", label: "阴影", lossRate: 3.3, lossKwh: 3380, isFault: true },
-      { key: "soiling", label: "灰尘", lossRate: 2.2, lossKwh: 2253, isFault: true },
-      { key: "fault_string", label: "掉串", lossRate: 0.5, lossKwh: 512, isFault: true },
-      { key: "fault_clip", label: "限额", lossRate: 0.3, lossKwh: 307, isFault: true },
-    ],
-  },
-];
-
-// ── 模拟电站列表（用于选择器） ──
-const MOCK_STATIONS = [
-  { id: "st-001", name: "西郊分布式光伏电站", taskCount: 5 },
-  { id: "st-002", name: "东部开发区屋顶光伏", taskCount: 2 },
-];
+import { useStations, useCompareTasks } from "@/lib/data-hooks";
+import type { Station } from "@/types/diagnosis";
+import type { MockTask, CompareIssue, CompareLossItem } from "@/lib/mock-data";
 
 export default function ComparePage() {
   const searchParams = useSearchParams();
@@ -131,16 +60,21 @@ export default function ComparePage() {
     searchParams.get("task_ids")?.split(",") ?? ["task-001", "task-004"]
   );
 
-  // 当前电站的可用对比任务
-  const availableTasks = useMemo(
-    () => MOCK_COMPARE_TASKS.filter((t) => t.stationId === stationId),
-    [stationId]
-  );
+  const { data: stations } = useStations();
+  const { data: compareData, isLoading, isError } = useCompareTasks(stationId, selectedIds);
 
-  // 已选中的任务对象
+  const rawTasks = (compareData as MockTask[] | undefined) ?? [];
+
+  // 当前电站的可用任务（已完成的任务才可对比）
+  const availableTasks = useMemo(() => {
+    return rawTasks.filter((t) => t.status === "completed");
+  }, [rawTasks]);
+
+  // 已选中的任务对象（仅含 summary 的已完成任务）
+  type CompletedMockTask = MockTask & { summary: NonNullable<MockTask["summary"]> };
   const selectedTasks = useMemo(
-    () => MOCK_COMPARE_TASKS.filter((t) => selectedIds.includes(t.id)),
-    [selectedIds]
+    () => rawTasks.filter((t) => selectedIds.includes(t.id) && t.summary) as CompletedMockTask[],
+    [rawTasks, selectedIds]
   );
 
   const toggleTask = useCallback((taskId: string) => {
@@ -157,24 +91,16 @@ export default function ComparePage() {
   // ── 颜色方案：任务 → 颜色 ──
   const taskColors = ["#2563EB", "#F59E0B", "#10B981"]; // 蓝、橙、绿
 
-  // ── 指标变化计算 ──
-  const calcChange = (idx: number, field: keyof CompareTask["summary"]) => {
-    if (idx === 0) return undefined;
-    const curr = selectedTasks[idx].summary[field] as number;
-    const prev = selectedTasks[idx - 1].summary[field] as number;
-    return curr - prev;
-  };
-
   // ── 故障状态对比逻辑 ──
   const issueComparison = useMemo(() => {
     if (selectedTasks.length < 2) return [];
-    const allTypes = [...new Set(selectedTasks.flatMap((t) => t.issues.map((i) => i.type)))];
+    const allTypes = [...new Set(selectedTasks.flatMap((t) => (t.compareIssues ?? []).map((i: CompareIssue) => i.type)))];
     return allTypes.map((type) => {
       const states = selectedTasks.map((t) => {
-        const issue = t.issues.find((i) => i.type === type);
+        const issue = (t.compareIssues ?? []).find((i: CompareIssue) => i.type === type);
         return issue ? (issue.resolved ? "resolved" : "active") : "none";
       });
-      const label = selectedTasks.find((t) => t.issues.find((i) => i.type === type))?.issues.find((i) => i.type === type)?.label ?? type;
+      const label = selectedTasks.find((t) => (t.compareIssues ?? []).find((i: CompareIssue) => i.type === type))?.compareIssues?.find((i: CompareIssue) => i.type === type)?.label ?? type;
       return { type, label, states };
     });
   }, [selectedTasks]);
@@ -208,7 +134,7 @@ export default function ComparePage() {
                 <SelectValue placeholder="选择电站" />
               </SelectTrigger>
               <SelectContent>
-                {MOCK_STATIONS.map((s) => (
+                {(stations ?? []).map((s: Station) => (
                   <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                 ))}
               </SelectContent>
@@ -233,10 +159,10 @@ export default function ComparePage() {
                   style={selected ? { backgroundColor: taskColors[colorIndex] } : undefined}
                 >
                   {selected && <CheckCircle2 className="h-3 w-3" />}
-                  {new Date(task.createdAt).toLocaleDateString("zh-CN", {
+                  {new Date(task.created_at).toLocaleDateString("zh-CN", {
                     month: "2-digit", day: "2-digit",
                   })}
-                  {" · "}PR {task.summary.pr_actual.toFixed(1)}%
+                  {" · "}PR {task.summary?.pr_actual.toFixed(1)}%
                 </button>
               );
             })}
@@ -244,7 +170,18 @@ export default function ComparePage() {
         </CardContent>
       </Card>
 
-      {selectedTasks.length < 2 ? (
+      {isLoading ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <Loader2 className="h-12 w-12 text-zinc-300 animate-spin" />
+          <h3 className="mt-4 text-sm font-medium text-zinc-500">加载中...</h3>
+        </div>
+      ) : isError ? (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <ClipboardList className="h-12 w-12 text-zinc-300" />
+          <h3 className="mt-4 text-sm font-medium text-zinc-500">加载失败</h3>
+          <p className="mt-1 text-xs text-zinc-400">请检查网络连接后刷新重试</p>
+        </div>
+      ) : selectedTasks.length < 2 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <BarChart3 className="h-12 w-12 text-zinc-300" />
           <h3 className="mt-4 text-sm font-medium text-zinc-500">请至少选择 2 个任务</h3>
@@ -269,7 +206,7 @@ export default function ComparePage() {
                       {selectedTasks.map((task, i) => (
                         <td key={task.id} className="py-2 font-semibold text-center" style={{ color: taskColors[i] }}>
                           <Link href={`/reports/${task.id}`} className="hover:underline">
-                            {new Date(task.createdAt).toLocaleDateString("zh-CN", {
+                            {new Date(task.created_at).toLocaleDateString("zh-CN", {
                               year: "numeric", month: "2-digit", day: "2-digit",
                             })}
                           </Link>
@@ -312,7 +249,7 @@ export default function ComparePage() {
                     />
                     <CompareRow
                       label="数据范围"
-                      values={selectedTasks.map((t) => `${t.dataRange.start} ~ ${t.dataRange.end}`)}
+                      values={selectedTasks.map((t) => `${t.scope.date_range.start} ~ ${t.scope.date_range.end}`)}
                       colors={taskColors}
                     />
                   </tbody>
@@ -336,7 +273,7 @@ export default function ComparePage() {
                           style={{ height: `${height}%`, backgroundColor: taskColors[i], opacity: 0.7 }}
                         />
                         <span className="text-[10px] text-zinc-400">
-                          {new Date(task.createdAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}
+                          {new Date(task.created_at).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}
                         </span>
                       </div>
                     );
@@ -362,7 +299,7 @@ export default function ComparePage() {
                       <td className="py-2 font-medium text-zinc-500 w-28">损失项</td>
                       {selectedTasks.map((task, i) => (
                         <td key={task.id} className="py-2 font-semibold text-center" style={{ color: taskColors[i] }}>
-                          {new Date(task.createdAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}
+                          {new Date(task.created_at).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}
                         </td>
                       ))}
                       {selectedTasks.length === 2 && (
@@ -373,12 +310,12 @@ export default function ComparePage() {
                   <tbody className="divide-y divide-zinc-50">
                     {/* 收集所有损失 key */}
                     {(() => {
-                      const allKeys = [...new Set(selectedTasks.flatMap((t) => t.losses.map((l) => l.key)))];
-                      const allLabels = selectedTasks.flatMap((t) => t.losses);
+                      const allKeys = [...new Set(selectedTasks.flatMap((t) => (t.compareLosses ?? []).map((l) => l.key)))];
+                      const allLabels = selectedTasks.flatMap((t) => (t.compareLosses ?? []));
                       return allKeys.map((key) => {
                         const label = allLabels.find((l) => l.key === key)?.label ?? key;
                         const values = selectedTasks.map((t) => {
-                          const loss = t.losses.find((l) => l.key === key);
+                          const loss = (t.compareLosses ?? []).find((l) => l.key === key);
                           return loss ? `${loss.lossRate.toFixed(2)}%` : "--";
                         });
                         const last = selectedTasks.length === 2 && values[0] !== "--" && values[1] !== "--"
@@ -458,7 +395,7 @@ export default function ComparePage() {
               <Link key={task.id} href={`/reports/${task.id}`}>
                 <Button variant="outline" size="sm" className="text-xs">
                   <FileText className="mr-1.5 h-3 w-3" />
-                  查看报告 ({new Date(task.createdAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })})
+                  查看报告 ({new Date(task.created_at).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })})
                 </Button>
               </Link>
             ))}

@@ -15,7 +15,7 @@
  *   - 用户反馈标记（PRD §4.2.2）
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -55,83 +55,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { useTask, useTaskStatus } from "@/lib/data-hooks";
 import type { Task } from "@/types/diagnosis";
 
-// ── 任务状态配置 ──
-const TASK_STATUS_CONFIG: Record<Task["status"], { icon: React.ComponentType<{ className?: string }>; label: string; color: string; bgColor: string }> = {
-  pending: { icon: Clock, label: "待映射", color: "text-zinc-500", bgColor: "bg-zinc-100" },
-  analyzing: { icon: Loader2, label: "分析中", color: "text-blue-600", bgColor: "bg-blue-50" },
-  completed: { icon: CheckCircle2, label: "已完成", color: "text-green-600", bgColor: "bg-green-50" },
-  failed: { icon: XCircle, label: "已失败", color: "text-red-600", bgColor: "bg-red-50" },
-};
-
-// ── 模拟任务数据（单个任务详情） ──
-const MOCK_TASKS: Record<string, (Task & { stationName: string; files?: MockFile[]; mappingsCount?: number; losses?: MockLoss[]; equivalentHours?: number })> = {
-  "task-006": {
-    id: "task-006", station_id: "st-001", owner_id: "user-1",
-    status: "pending", stationName: "西郊分布式光伏电站",
-    scope: { sub_station_ids: ["sub-001"], date_range: { start: "2025-04-01", end: "2025-04-15" } },
-    created_at: "2025-04-01T09:00:00Z",
-    files: [{ id: "f-001", name: "INV_202504.csv", size: 2457600, rowCount: 4320, timeStart: "2025-04-01T00:00:00Z", timeEnd: "2025-04-15T23:55:00Z", encoding: "UTF-8" }],
-    mappingsCount: 2,
-  },
-  "task-005": {
-    id: "task-005", station_id: "st-001", owner_id: "user-1",
-    status: "analyzing", stationName: "西郊分布式光伏电站",
-    scope: { sub_station_ids: ["sub-001", "sub-002", "sub-003"], date_range: { start: "2025-03-15", end: "2025-03-31" } },
-    created_at: "2025-03-31T08:30:00Z",
-    files: [
-      { id: "f-101", name: "INV_A_202503.csv", size: 3200000, rowCount: 4896, timeStart: "2025-03-15T00:00:00Z", timeEnd: "2025-03-31T23:55:00Z", encoding: "UTF-8" },
-      { id: "f-102", name: "INV_B_202503.csv", size: 3100000, rowCount: 4896, timeStart: "2025-03-15T00:00:00Z", timeEnd: "2025-03-31T23:55:00Z", encoding: "UTF-8" },
-      { id: "f-103", name: "INV_C_202503.csv", size: 3050000, rowCount: 4896, timeStart: "2025-03-15T00:00:00Z", timeEnd: "2025-03-31T23:55:00Z", encoding: "UTF-8" },
-    ],
-    mappingsCount: 18,
-  },
-  "task-004": {
-    id: "task-004", station_id: "st-001", owner_id: "user-1",
-    status: "completed", stationName: "西郊分布式光伏电站",
-    scope: { sub_station_ids: ["sub-001", "sub-002", "sub-003"], date_range: { start: "2025-03-01", end: "2025-03-15" } },
-    summary: { pr_actual: 85.2, pr_baseline: 73.38, pr_deviation: 11.82, energy_actual_kwh: 102300, energy_baseline_kwh: 88100, energy_deviation_kwh: 14200, revenue_actual: 39999, revenue_baseline: 34445, revenue_deviation: 5554 },
-    report_number: "PVAI20250315103000001",
-    created_at: "2025-03-15T10:30:00Z", completed_at: "2025-03-15T10:32:00Z",
-    equivalentHours: 92,
-    files: [
-      { id: "f-201", name: "INV_A_20250301-0315.csv", size: 4200000, rowCount: 4320, timeStart: "2025-03-01T00:00:00Z", timeEnd: "2025-03-15T23:55:00Z", encoding: "UTF-8" },
-      { id: "f-202", name: "INV_B_20250301-0315.csv", size: 4100000, rowCount: 4320, timeStart: "2025-03-01T00:00:00Z", timeEnd: "2025-03-15T23:55:00Z", encoding: "UTF-8" },
-      { id: "f-203", name: "INV_C_20250301-0315.csv", size: 4050000, rowCount: 4320, timeStart: "2025-03-01T00:00:00Z", timeEnd: "2025-03-15T23:55:00Z", encoding: "UTF-8" },
-    ],
-    mappingsCount: 18,
-    losses: [
-      { key: "shadow", label: "阴影损失", lossRate: 3.34, lossKwh: 3420, diagnosed: true },
-      { key: "soiling", label: "灰尘损失", lossRate: 2.15, lossKwh: 2200, diagnosed: true },
-      { key: "inverter_eff", label: "逆变器效率", lossRate: 1.85, lossKwh: 1890, diagnosed: false },
-      { key: "degradation", label: "自然衰减", lossRate: 1.12, lossKwh: 1146, diagnosed: false },
-    ],
-  },
-  "task-003": {
-    id: "task-003", station_id: "st-002", owner_id: "user-1",
-    status: "completed", stationName: "东部开发区屋顶光伏",
-    scope: { sub_station_ids: ["sub-004"], date_range: { start: "2025-03-01", end: "2025-03-10" } },
-    summary: { pr_actual: 79.5, pr_baseline: 72.1, pr_deviation: 7.4, energy_actual_kwh: 85000, energy_baseline_kwh: 77100, energy_deviation_kwh: 7900, revenue_actual: 33235, revenue_baseline: 30146, revenue_deviation: 3089 },
-    report_number: "PVAI20250310150000002",
-    created_at: "2025-03-10T15:00:00Z", completed_at: "2025-03-10T15:01:30Z",
-    equivalentHours: 78,
-    files: [{ id: "f-301", name: "INV_20250301-0310.xlsx", size: 3800000, rowCount: 2880, timeStart: "2025-03-01T00:00:00Z", timeEnd: "2025-03-10T23:55:00Z", encoding: "UTF-8" }],
-    mappingsCount: 16,
-    losses: [
-      { key: "clipping", label: "限额损失", lossRate: 1.89, lossKwh: 1610, diagnosed: true },
-      { key: "temperature", label: "温度损失", lossRate: 1.55, lossKwh: 1320, diagnosed: false },
-    ],
-  },
-  "task-002": {
-    id: "task-002", station_id: "st-001", owner_id: "user-1",
-    status: "failed", stationName: "西郊分布式光伏电站",
-    scope: { sub_station_ids: ["sub-001"], date_range: { start: "2025-02-28", end: "2025-02-28" } },
-    error_message: "数据完整度不足：上传文件缺失交流电流(D5)和当日发电量(D9)字段，无法执行诊断",
-    created_at: "2025-02-28T11:00:00Z",
-    files: [{ id: "f-401", name: "INV_20250228.csv", size: 580000, rowCount: 288, timeStart: "2025-02-28T00:00:00Z", timeEnd: "2025-02-28T23:55:00Z", encoding: "GBK" }],
-    mappingsCount: 14,
-  },
+/** API 返回的任务详情包含扩展字段 */
+type TaskDetail = Task & {
+  stationName?: string;
+  files?: MockFile[];
+  mappingsCount?: number;
+  losses?: MockLoss[];
+  equivalentHours?: number;
 };
 
 interface MockFile {
@@ -143,64 +76,39 @@ interface MockLoss {
   key: string; label: string; lossRate: number; lossKwh: number; diagnosed: boolean;
 }
 
-/** 模拟分析进度：30秒完成 80%，后 20% 长时间等待 */
-function useSimulatedProgress(taskId: string, status: Task["status"]) {
-  const [progress, setProgress] = useState(0);
-  const [currentStep, setCurrentStep] = useState("");
-
-  useEffect(() => {
-    if (status !== "analyzing") return;
-
-    const steps = [
-      { at: 0, text: "数据质量检查中..." },
-      { at: 15, text: "GTI 辐照度换面计算(Hay&Davies)..." },
-      { at: 30, text: "PR 计算与基准对比..." },
-      { at: 45, text: "14 项损失管线运行中..." },
-      { at: 65, text: "故障事件识别(5min帧扫描)..." },
-      { at: 80, text: "报告数据聚合与格式化..." },
-      { at: 92, text: "损失优化建议生成中..." },
-    ];
-
-    const timer = setInterval(() => {
-      setProgress((p) => {
-        if (p >= 95) return p;
-        return p + Math.random() * 8 + 1;
-      });
-    }, 1500);
-
-    return () => clearInterval(timer);
-  }, [status]);
-
-  // 根据进度确定当前步骤文本
-  useEffect(() => {
-    const steps = [
-      { at: 0, text: "数据质量检查中..." },
-      { at: 15, text: "GTI 辐照度换面计算(Hay&Davies)..." },
-      { at: 30, text: "PR 计算与基准对比..." },
-      { at: 45, text: "14 项损失管线运行中..." },
-      { at: 65, text: "故障事件识别(5min帧扫描)..." },
-      { at: 80, text: "报告数据聚合与格式化..." },
-      { at: 92, text: "损失优化建议生成中..." },
-    ];
-    const s = [...steps].reverse().find((s) => progress >= s.at);
-    if (s) setCurrentStep(s.text);
-  }, [progress]);
-
-  return { progress: Math.min(progress, 99), currentStep };
-}
+// ── 任务状态配置 ──
+const TASK_STATUS_CONFIG: Record<Task["status"], { icon: React.ComponentType<{ className?: string }>; label: string; color: string; bgColor: string }> = {
+  pending: { icon: Clock, label: "待映射", color: "text-zinc-500", bgColor: "bg-zinc-100" },
+  analyzing: { icon: Loader2, label: "分析中", color: "text-blue-600", bgColor: "bg-blue-50" },
+  completed: { icon: CheckCircle2, label: "已完成", color: "text-green-600", bgColor: "bg-green-50" },
+  failed: { icon: XCircle, label: "已失败", color: "text-red-600", bgColor: "bg-red-50" },
+};
 
 export default function TaskDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const task = MOCK_TASKS[params.id];
+  const { data: task, isLoading, isError } = useTask(params.id);
+  const { data: statusData } = useTaskStatus(params.id, { enabled: (task as TaskDetail)?.status === "analyzing" });
 
-  // 分析进度（仅 analyzing 状态）
-  const { progress, currentStep } = useSimulatedProgress(params.id, task?.status ?? "pending");
+  const detail = task as TaskDetail | undefined;
+
+  // 分析进度（来自 API 轮询）
+  const progress = statusData?.progress ?? 0;
+  const currentStep = statusData?.currentStep ?? "";
 
   // 用户反馈状态（仅已完成）
   const [feedback, setFeedback] = useState<"none" | "confirmed" | "doubtful">("none");
 
-  if (!task) {
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 text-center">
+        <Loader2 className="h-12 w-12 text-zinc-300 animate-spin" />
+        <h3 className="mt-4 text-sm font-medium text-zinc-500">加载中...</h3>
+      </div>
+    );
+  }
+
+  if (isError || !detail) {
     return (
       <div className="flex flex-col items-center justify-center py-32 text-center">
         <ClipboardList className="h-12 w-12 text-zinc-300" />
@@ -213,7 +121,7 @@ export default function TaskDetailPage() {
     );
   }
 
-  const statusCfg = TASK_STATUS_CONFIG[task.status];
+  const statusCfg = TASK_STATUS_CONFIG[detail.status];
   const StatusIcon = statusCfg.icon;
 
   // 格式化文件大小
@@ -223,8 +131,8 @@ export default function TaskDetailPage() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  // 计算预计剩余时间
-  const estimatedRemaining = progress > 0 ? Math.round((100 - progress) / 3) : null;
+  // 预计剩余时间（来自 API 轮询）
+  const estimatedRemaining = statusData?.estimated_remaining_s ?? null;
 
   return (
     <div className="space-y-6">
@@ -239,7 +147,7 @@ export default function TaskDetailPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-semibold tracking-tight">
-                {task.stationName}
+                {detail.stationName}
               </h1>
               <Badge className={cn("text-[10px]", statusCfg.color, statusCfg.bgColor)}>
                 <StatusIcon className="mr-1 h-3 w-3" />
@@ -247,17 +155,17 @@ export default function TaskDetailPage() {
               </Badge>
             </div>
             <p className="mt-0.5 text-xs text-zinc-400">
-              诊断任务 · {task.id}
-              {task.report_number && <span className="ml-2 font-mono text-[10px]">{task.report_number}</span>}
+              诊断任务 · {detail.id}
+              {detail.report_number && <span className="ml-2 font-mono text-[10px]">{detail.report_number}</span>}
             </p>
           </div>
         </div>
 
         {/* 操作按钮 */}
         <div className="flex items-center gap-2">
-          {task.status === "completed" && (
+          {detail.status === "completed" && (
             <>
-              <Link href={`/reports/${task.id}`}>
+              <Link href={`/reports/${detail.id}`}>
                 <Button size="sm">
                   <FileText className="mr-1.5 h-3.5 w-3.5" />
                   查看报告
@@ -279,23 +187,23 @@ export default function TaskDetailPage() {
               </Button>
             </>
           )}
-          {task.status === "pending" && (
-            <Link href={`/diagnose/mapping?task_id=${task.id}`}>
+          {detail.status === "pending" && (
+            <Link href={`/diagnose/mapping?task_id=${detail.id}`}>
               <Button size="sm">
                 <Zap className="mr-1.5 h-3.5 w-3.5" />
                 继续映射
               </Button>
             </Link>
           )}
-          {task.status === "failed" && (
-            <Link href={`/diagnose/mapping?task_id=${task.id}&retry=1`}>
+          {detail.status === "failed" && (
+            <Link href={`/diagnose/mapping?task_id=${detail.id}&retry=1`}>
               <Button size="sm">
                 <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
                 修正重试
               </Button>
             </Link>
           )}
-          {task.status === "analyzing" && (
+          {detail.status === "analyzing" && (
             <Button size="sm" disabled>
               <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
               分析中...
@@ -311,7 +219,7 @@ export default function TaskDetailPage() {
         {/* ── 左侧：任务详情 ── */}
         <div className="lg:col-span-2 space-y-6">
           {/* ── 分析中：进度卡片 ── */}
-          {task.status === "analyzing" && (
+          {detail.status === "analyzing" && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -380,25 +288,25 @@ export default function TaskDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                <InfoItem label="所属电站" value={task.stationName} />
-                <InfoItem label="诊断子场站" value={`${task.scope.sub_station_ids.length} 个`} />
-                <InfoItem label="数据起始" value={task.scope.date_range.start} />
-                <InfoItem label="数据截止" value={task.scope.date_range.end} />
+                <InfoItem label="所属电站" value={detail.stationName ?? "--"} />
+                <InfoItem label="诊断子场站" value={`${detail.scope.sub_station_ids.length} 个`} />
+                <InfoItem label="数据起始" value={detail.scope.date_range.start} />
+                <InfoItem label="数据截止" value={detail.scope.date_range.end} />
               </div>
             </CardContent>
           </Card>
 
           {/* ── 数据文件 ── */}
-          {task.files && task.files.length > 0 && (
+          {detail.files && detail.files.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <FileSpreadsheet className="h-4 w-4 text-zinc-500" />
-                  数据文件 ({task.files.length})
+                  数据文件 ({detail.files.length})
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {task.files.map((file) => (
+                {detail.files.map((file) => (
                   <div
                     key={file.id}
                     className="flex items-center gap-3 rounded-lg border border-zinc-200 px-4 py-3"
@@ -422,7 +330,7 @@ export default function TaskDetailPage() {
           )}
 
           {/* ── 失败原因 ── */}
-          {task.status === "failed" && task.error_message && (
+          {detail.status === "failed" && detail.error_message && (
             <Card className="border-red-200 bg-red-50/50">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm flex items-center gap-2 text-red-700">
@@ -431,7 +339,7 @@ export default function TaskDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-red-600">{task.error_message}</p>
+                <p className="text-sm text-red-600">{detail.error_message}</p>
                 <p className="mt-2 text-xs text-red-400">
                   请修正数据文件后重试。已完成的字段映射将保留，无需重新映射 (PRD §4.3)
                 </p>
@@ -453,19 +361,19 @@ export default function TaskDetailPage() {
                 <span className="text-zinc-500">创建时间</span>
               </div>
               <p className="text-sm font-medium text-zinc-800 ml-5">
-                {new Date(task.created_at).toLocaleDateString("zh-CN", {
+                {new Date(detail.created_at).toLocaleDateString("zh-CN", {
                   year: "numeric", month: "2-digit", day: "2-digit",
                   hour: "2-digit", minute: "2-digit",
                 })}
               </p>
-              {task.completed_at && (
+              {detail.completed_at && (
                 <>
                   <div className="flex items-center gap-1.5 text-xs mt-3">
                     <CheckCircle2 className="h-3 w-3 text-green-500" />
                     <span className="text-zinc-500">完成时间</span>
                   </div>
                   <p className="text-sm font-medium text-zinc-800 ml-5">
-                    {new Date(task.completed_at).toLocaleDateString("zh-CN", {
+                    {new Date(detail.completed_at).toLocaleDateString("zh-CN", {
                       year: "numeric", month: "2-digit", day: "2-digit",
                       hour: "2-digit", minute: "2-digit",
                     })}
@@ -476,7 +384,7 @@ export default function TaskDetailPage() {
           </Card>
 
           {/* 已完成 → 摘要指标 */}
-          {task.status === "completed" && task.summary && (
+          {detail.status === "completed" && detail.summary && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm">诊断摘要</CardTitle>
@@ -484,37 +392,37 @@ export default function TaskDetailPage() {
               <CardContent className="space-y-3">
                 <MiniMetric
                   label="实际 PR"
-                  value={`${task.summary.pr_actual.toFixed(2)}%`}
+                  value={`${detail.summary.pr_actual.toFixed(2)}%`}
                 />
                 <MiniMetric
                   label="PR 偏差"
-                  value={`${task.summary.pr_deviation > 0 ? "+" : ""}${task.summary.pr_deviation.toFixed(2)}%`}
-                  highlight={task.summary.pr_deviation > 0 ? "positive" : "negative"}
+                  value={`${detail.summary.pr_deviation > 0 ? "+" : ""}${detail.summary.pr_deviation.toFixed(2)}%`}
+                  highlight={detail.summary.pr_deviation > 0 ? "positive" : "negative"}
                 />
                 <Separator />
-                <MiniMetric label="等效小时" value={`${task.equivalentHours ?? "--"} h`} />
+                <MiniMetric label="等效小时" value={`${detail.equivalentHours ?? "--"} h`} />
                 <MiniMetric
                   label="电量偏差"
-                  value={`${task.summary.energy_deviation_kwh > 0 ? "+" : ""}${(task.summary.energy_deviation_kwh / 10000).toFixed(1)} 万kWh`}
-                  highlight={task.summary.energy_deviation_kwh > 0 ? "positive" : "negative"}
+                  value={`${detail.summary.energy_deviation_kwh > 0 ? "+" : ""}${(detail.summary.energy_deviation_kwh / 10000).toFixed(1)} 万kWh`}
+                  highlight={detail.summary.energy_deviation_kwh > 0 ? "positive" : "negative"}
                 />
                 <MiniMetric
                   label="收益偏差"
-                  value={`${task.summary.revenue_deviation > 0 ? "+" : ""}¥${task.summary.revenue_deviation.toLocaleString()}`}
-                  highlight={task.summary.revenue_deviation > 0 ? "positive" : "negative"}
+                  value={`${detail.summary.revenue_deviation > 0 ? "+" : ""}¥${detail.summary.revenue_deviation.toLocaleString()}`}
+                  highlight={detail.summary.revenue_deviation > 0 ? "positive" : "negative"}
                 />
               </CardContent>
             </Card>
           )}
 
           {/* 损失概览（仅已完成） */}
-          {task.status === "completed" && task.losses && (
+          {detail.status === "completed" && detail.losses && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm">主要损失</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {task.losses.map((loss) => (
+                {detail.losses.map((loss) => (
                   <div key={loss.key} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-1.5">
                       {loss.diagnosed && (
@@ -532,7 +440,7 @@ export default function TaskDetailPage() {
           )}
 
           {/* 用户反馈（仅已完成）PRD §4.2.2 */}
-          {task.status === "completed" && (
+          {detail.status === "completed" && (
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm">诊断反馈</CardTitle>
@@ -571,9 +479,9 @@ export default function TaskDetailPage() {
               <CardTitle className="text-sm">更多操作</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {task.status === "completed" && (
+              {detail.status === "completed" && (
                 <>
-                  <Link href={`/stations/${task.station_id}`} className="block">
+                  <Link href={`/stations/${detail.station_id}`} className="block">
                     <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
                       <Building2 className="mr-2 h-3.5 w-3.5" />
                       查看电站详情
@@ -585,7 +493,7 @@ export default function TaskDetailPage() {
                   </Button>
                 </>
               )}
-              {task.status === "analyzing" && (
+              {detail.status === "analyzing" && (
                 <Button variant="ghost" size="sm" className="w-full justify-start text-xs text-amber-600">
                   <XCircle className="mr-2 h-3.5 w-3.5" />
                   取消诊断

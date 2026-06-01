@@ -17,7 +17,7 @@
  * 双模态设计（PRD §5.3.0）：在线交互式预览可下钻，导出版为静态PDF/Excel。
  */
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -35,6 +35,7 @@ import {
   FileText,
   ExternalLink,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,152 +56,52 @@ import {
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useTaskReport } from "@/lib/data-hooks";
 import { exportPDF, exportExcel, exportJSON } from "@/lib/export-utils";
 
-// ── 模拟报告完整数据 ──
-const MOCK_REPORT = {
-  id: "task-004",
-  stationName: "西郊分布式光伏电站",
-  stationId: "st-001",
-  reportNumber: "PVAI20250315103000001",
-  createdAt: "2025-03-15T10:30:00Z",
-  dataRange: { start: "2025-03-01", end: "2025-03-15" },
-  feedInPrice: 0.391,
-
-  // 核心指标
+/** 报告完整数据（来自 API） */
+interface ReportData {
+  id: string;
+  stationName: string;
+  stationId: string;
+  reportNumber: string;
+  createdAt: string;
+  dataRange: { start: string; end: string };
+  feedInPrice: number;
   summary: {
-    pr_actual: 85.2,
-    pr_baseline: 73.38,
-    pr_deviation: 11.82,
-    energy_actual_kwh: 102300,
-    energy_baseline_kwh: 88100,
-    energy_deviation_kwh: 14200,
-    revenue_actual: 39999,
-    revenue_baseline: 34445,
-    revenue_deviation: 5554,
-  },
-
-  // 电站基本参数
+    pr_actual: number; pr_baseline: number; pr_deviation: number;
+    energy_actual_kwh: number; energy_baseline_kwh: number; energy_deviation_kwh: number;
+    revenue_actual: number; revenue_baseline: number; revenue_deviation: number;
+  };
   stationParams: {
-    longitude: 120.1234,
-    latitude: 31.5678,
-    timezone: "Asia/Shanghai",
-    resourceZone: "III",
-    gridConnDate: "2023-06-15",
-    moduleType: "单晶",
-    moduleModel: "LR5-72HPH-545M",
-    modulePower: 545,
-    subStationCount: 3,
-    totalDcCapacity: 530,
-    totalAcCapacity: 460,
-  },
-
-  // 第三章：数据质量
+    longitude: number; latitude: number; timezone: string;
+    resourceZone: string; gridConnDate: string;
+    moduleType: string; moduleModel: string; modulePower: number;
+    subStationCount: number; totalDcCapacity: number; totalAcCapacity: number;
+  };
   dataQuality: {
-    totalRows: 4321,
-    validRows: 4280,
-    missingRate: 0.95,
-    timeCoverage: "100%",
-    avgIntervalMin: 5,
-    encoding: "UTF-8",
-    delimiter: ",",
-    fileCount: 3,
-    notes: "个别采样点的组件温度数据缺失（缺失率<1%），以插值填补处理后用于计算",
-  },
-
-  // 第四章：月度满发小时（实际 vs 基准）
-  monthlyFullLoadHours: [
-    { month: "2025-01", actual: 84, baseline: 78 },
-    { month: "2025-02", actual: 89, baseline: 80 },
-    { month: "2025-03", actual: 92, baseline: 75 },
-  ],
-
-  // 第五章：月度 PR 交叉表（PRD §5.2.5 核心输出格式）
-  monthlyPRTable: [
-    {
-      month: "2025-01", prActual: 78.40, prBaseline: 66.00, prDeviation: 12.40,
-      gridLoss: -0.22, shutdownLoss: 0, overUnderVoltLoss: 0,
-      shadowLoss: -0.01, clippingLoss: 0, soilingLoss: -0.03, stringLoss: 0,
-      otherLoss: 12.66,
-    },
-    {
-      month: "2025-02", prActual: 82.10, prBaseline: 70.47, prDeviation: 11.63,
-      gridLoss: -0.76, shutdownLoss: 0, overUnderVoltLoss: 0,
-      shadowLoss: -0.02, clippingLoss: 0, soilingLoss: -0.04, stringLoss: 0,
-      otherLoss: 12.45,
-    },
-    {
-      month: "2025-03", prActual: 85.20, prBaseline: 73.38, prDeviation: 11.82,
-      gridLoss: -0.34, shutdownLoss: 0, overUnderVoltLoss: 0,
-      shadowLoss: -0.18, clippingLoss: 0, soilingLoss: -0.10, stringLoss: -0.01,
-      otherLoss: 12.45,
-    },
-  ],
-
-  // 第二章：损失分解 + 建议
-  lossBreakdown: [
-    {
-      key: "grid_loss", label: "脱网损失",
-      prLoss: -0.34, kwhLoss: 348, suggestion:
-        "建议与电工沟通尽快恢复并网；检查国网并网线和变压器连接状态；确认电网近期是否有计划性检修（PRD §5.3.3 B）",
-      events: [
-        { device: "SN-20230101", time: "2025-03-02 03:15-06:40", durationH: 3.4, lossKwh: 200 },
-        { device: "SN-20230102", time: "2025-03-08 12:00-14:30", durationH: 2.5, lossKwh: 148 },
-      ],
-    },
-    {
-      key: "shadow_loss", label: "阴影损失",
-      prLoss: -0.18, kwhLoss: 184, suggestion:
-        "建议现场排查遮挡源（周边建筑、树木、同排组件间互相遮挡）；调整组件间距或修剪遮挡植被（PRD §5.3.3 B）",
-      events: [
-        { device: "子场站B区", time: "每日9:00-10:30", durationH: 1.5, lossKwh: 92 },
-      ],
-    },
-    {
-      key: "soiling_loss", label: "灰尘损失",
-      prLoss: -0.10, kwhLoss: 102, suggestion:
-        "建议安排组件清洗；3月份PM2.5均值偏高（62μg/m³），结合降雨数据（仅2天有效降雨），清洗后可恢复约0.08% PR",
-      events: [],
-    },
-    {
-      key: "string_loss", label: "掉串损失",
-      prLoss: -0.01, kwhLoss: 10, suggestion:
-        "现场检查对应组串MC4接头和保险丝；排查是否存在动物咬损线缆或接头松动",
-      events: [
-        { device: "子场站C区 MPPT#3", time: "2025-03-05 全天", durationH: 8, lossKwh: 10 },
-      ],
-    },
-  ],
-
-  // 第六章：离线事件
-  offlineEvents: [
-    {
-      loggerSn: "采集器-SN20230101",
-      inverterSn: "SN-20230101",
-      offlineHours: 2.5,
-      offlineCount: 2,
-      exampleDates: ["2025-03-05", "2025-03-08"],
-    },
-    {
-      loggerSn: "采集器-SN20230105",
-      inverterSn: "SN-20230103",
-      offlineHours: 1.0,
-      offlineCount: 1,
-      exampleDates: ["2025-03-12"],
-    },
-  ],
-
-  // 电站级聚合（用于瀑布图）
-  waterfall: [
-    { key: "theory", label: "理论发电量", value: 100, isLoss: false },
-    { key: "grid_loss", label: "脱网损失", value: 0.34, isLoss: true },
-    { key: "shadow_loss", label: "阴影损失", value: 0.18, isLoss: true },
-    { key: "soiling_loss", label: "灰尘损失", value: 0.10, isLoss: true },
-    { key: "string_loss", label: "掉串损失", value: 0.01, isLoss: true },
-    { key: "other", label: "其他损失", value: 14.10, isLoss: false },
-    { key: "actual", label: "实际发电量", value: 85.27, isLoss: false },
-  ],
-};
+    totalRows: number; validRows: number; missingRate: number;
+    timeCoverage: string; avgIntervalMin: number;
+    encoding: string; delimiter: string; fileCount: number;
+    notes?: string;
+  };
+  monthlyFullLoadHours: { month: string; actual: number; baseline: number }[];
+  monthlyPRTable: {
+    month: string; prActual: number; prBaseline: number; prDeviation: number;
+    gridLoss: number; shutdownLoss: number; overUnderVoltLoss: number;
+    shadowLoss: number; clippingLoss: number; soilingLoss: number; stringLoss: number;
+    otherLoss: number;
+  }[];
+  lossBreakdown: {
+    key: string; label: string; prLoss: number; kwhLoss: number; suggestion: string;
+    events: { device: string; time: string; durationH: number; lossKwh: number }[];
+  }[];
+  offlineEvents: {
+    loggerSn: string; inverterSn: string; offlineHours: number; offlineCount: number;
+    exampleDates: string[];
+  }[];
+  waterfall: { key: string; label: string; value: number; isLoss: boolean }[];
+}
 
 // ── 损失类型中文名称映射 ──
 const LOSS_LABELS: Record<string, string> = {
@@ -225,24 +126,48 @@ const GLOSSARY = [
 
 export default function ReportDetailPage() {
   const params = useParams<{ id: string }>();
-  const [report] = useState(MOCK_REPORT);
+  const { data: report, isLoading, isError } = useTaskReport(params.id);
   const [activeSection, setActiveSection] = useState("overview");
 
-  const deviationIsPositive = report.summary.pr_deviation > 0;
+  const reportData = report as ReportData | undefined;
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 text-center">
+        <Loader2 className="h-12 w-12 text-zinc-300 animate-spin" />
+        <h3 className="mt-4 text-sm font-medium text-zinc-500">加载中...</h3>
+      </div>
+    );
+  }
+
+  if (isError || !reportData) {
+    return (
+      <div className="flex flex-col items-center justify-center py-32 text-center">
+        <FileText className="h-12 w-12 text-zinc-300" />
+        <h3 className="mt-4 text-sm font-medium text-zinc-500">报告不存在</h3>
+        <p className="mt-1 text-xs text-zinc-400">该报告可能已被删除或 ID 无效</p>
+        <Link href="/reports" className="mt-4">
+          <Button variant="outline" size="sm">返回报告中心</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  const deviationIsPositive = reportData.summary.pr_deviation > 0;
 
   // ── 导出处理 ──
   const buildExportData = useCallback(() => {
-    const losses = report.waterfall.filter((w) => w.isLoss);
+    const losses = reportData.waterfall.filter((w) => w.isLoss);
     return {
-      stationName: report.stationName,
-      reportNumber: report.reportNumber,
+      stationName: reportData.stationName,
+      reportNumber: reportData.reportNumber,
       prSummary: [
-        { label: "实际PR", value: `${report.summary.pr_actual.toFixed(2)}%` },
-        { label: "基准PR", value: `${report.summary.pr_baseline.toFixed(2)}%` },
-        { label: "PR偏差", value: `${report.summary.pr_deviation > 0 ? "+" : ""}${report.summary.pr_deviation.toFixed(2)}%` },
-        { label: "实际发电量", value: `${(report.summary.energy_actual_kwh / 10000).toFixed(1)} 万kWh` },
-        { label: "电量偏差", value: `${report.summary.energy_deviation_kwh > 0 ? "+" : ""}${(report.summary.energy_deviation_kwh / 10000).toFixed(1)} 万kWh` },
-        { label: "收益偏差", value: `${report.summary.revenue_deviation > 0 ? "+" : ""}¥${report.summary.revenue_deviation.toLocaleString()}` },
+        { label: "实际PR", value: `${reportData.summary.pr_actual.toFixed(2)}%` },
+        { label: "基准PR", value: `${reportData.summary.pr_baseline.toFixed(2)}%` },
+        { label: "PR偏差", value: `${reportData.summary.pr_deviation > 0 ? "+" : ""}${reportData.summary.pr_deviation.toFixed(2)}%` },
+        { label: "实际发电量", value: `${(reportData.summary.energy_actual_kwh / 10000).toFixed(1)} 万kWh` },
+        { label: "电量偏差", value: `${reportData.summary.energy_deviation_kwh > 0 ? "+" : ""}${(reportData.summary.energy_deviation_kwh / 10000).toFixed(1)} 万kWh` },
+        { label: "收益偏差", value: `${reportData.summary.revenue_deviation > 0 ? "+" : ""}¥${reportData.summary.revenue_deviation.toLocaleString()}` },
       ],
       losses: losses.map((l) => ({
         label: l.label,
@@ -250,13 +175,13 @@ export default function ReportDetailPage() {
         lossKwh: `${Math.round(l.value * 60).toLocaleString()} kWh`,
         category: "已诊断损失",
       })),
-      monthlyPR: report.monthlyPRTable.map((m) => ({
+      monthlyPR: reportData.monthlyPRTable.map((m) => ({
         month: m.month,
         prActual: `${m.prActual.toFixed(2)}%`,
         prBaseline: `${m.prBaseline.toFixed(2)}%`,
         prDeviation: `${m.prDeviation.toFixed(2)}%`,
       })),
-      faults: report.lossBreakdown
+      faults: reportData.lossBreakdown
         .filter((lb) => lb.events && lb.events.length > 0)
         .flatMap((lb) => lb.events.map((ev) => ({
           device: ev.device,
@@ -264,7 +189,7 @@ export default function ReportDetailPage() {
           duration: `${ev.durationH} 小时`,
           lossKwh: `${ev.lossKwh.toLocaleString()} kWh`,
         }))),
-      offlineEvents: report.offlineEvents.map((o) => ({
+      offlineEvents: reportData.offlineEvents.map((o) => ({
         logger: o.loggerSn,
         hours: `${o.offlineHours}h`,
         count: `${o.offlineCount}次`,
@@ -275,13 +200,13 @@ export default function ReportDetailPage() {
 
   const handleExportPDF = () => {
     toast.success("正在生成 PDF 报告...");
-    exportPDF(`${report.stationName} — 健康诊断报告`);
+    exportPDF(`${reportData.stationName} — 健康诊断报告`);
   };
 
   const handleExportExcel = () => {
     toast.success("正在导出 Excel（CSV格式）...");
     const data = buildExportData();
-    exportExcel(report.reportNumber, {
+    exportExcel(reportData.reportNumber, {
       "核心指标": data.prSummary.map((i) => ({ 指标: i.label, 数值: i.value })),
       "损失分解": data.losses.map((l) => ({ 损失项: l.label, 损失率: l.lossRate, 损失电量: l.lossKwh, 类别: l.category })),
       "月度PR": data.monthlyPR.map((m) => ({ 月份: m.month, 实际PR: m.prActual, 基准PR: m.prBaseline, PR偏差: m.prDeviation })),
@@ -292,7 +217,7 @@ export default function ReportDetailPage() {
 
   const handleExportRawData = () => {
     toast.success("正在下载诊断原始数据...");
-    exportJSON(report, `${report.reportNumber}_raw`);
+    exportJSON(report, `${reportData.reportNumber}_raw`);
   };
 
   return (
@@ -308,16 +233,16 @@ export default function ReportDetailPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight">
-                {report.stationName} — 健康诊断报告
+                {reportData.stationName} — 健康诊断报告
               </h1>
               <Badge variant="default">已完成</Badge>
             </div>
             <p className="mt-1 text-sm text-zinc-500">
-              报告编号：{report.reportNumber}
+              报告编号：{reportData.reportNumber}
               <span className="mx-2">·</span>
-              诊断日期：{new Date(report.createdAt).toLocaleDateString("zh-CN")}
+              诊断日期：{new Date(reportData.createdAt).toLocaleDateString("zh-CN")}
               <span className="mx-2">·</span>
-              数据范围：{report.dataRange.start} ~ {report.dataRange.end}
+              数据范围：{reportData.dataRange.start} ~ {reportData.dataRange.end}
             </p>
           </div>
         </div>
@@ -389,8 +314,8 @@ export default function ReportDetailPage() {
                     deviationIsPositive ? "text-green-600" : "text-red-600"
                   )}
                 >
-                  {report.summary.pr_deviation > 0 ? "+" : ""}
-                  {report.summary.pr_deviation.toFixed(2)}%
+                  {reportData.summary.pr_deviation > 0 ? "+" : ""}
+                  {reportData.summary.pr_deviation.toFixed(2)}%
                 </span>
                 {deviationIsPositive ? (
                   <TrendingUp className="h-8 w-8 text-green-500" />
@@ -405,10 +330,10 @@ export default function ReportDetailPage() {
               </p>
             </div>
             <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-right">
-              <MetricRow label="实际 PR" value={`${report.summary.pr_actual.toFixed(2)}%`} />
-              <MetricRow label="基准 PR" value={`${report.summary.pr_baseline.toFixed(2)}%`} />
-              <MetricRow label="实际发电量" value={`${(report.summary.energy_actual_kwh / 10000).toFixed(1)} 万 kWh`} />
-              <MetricRow label="基准发电量" value={`${(report.summary.energy_baseline_kwh / 10000).toFixed(1)} 万 kWh`} />
+              <MetricRow label="实际 PR" value={`${reportData.summary.pr_actual.toFixed(2)}%`} />
+              <MetricRow label="基准 PR" value={`${reportData.summary.pr_baseline.toFixed(2)}%`} />
+              <MetricRow label="实际发电量" value={`${(reportData.summary.energy_actual_kwh / 10000).toFixed(1)} 万 kWh`} />
+              <MetricRow label="基准发电量" value={`${(reportData.summary.energy_baseline_kwh / 10000).toFixed(1)} 万 kWh`} />
             </div>
           </CardContent>
         </Card>
@@ -418,23 +343,23 @@ export default function ReportDetailPage() {
           <SummaryCard
             icon={Zap}
             label="电量偏差"
-            value={`${report.summary.energy_deviation_kwh > 0 ? "+" : ""}${(report.summary.energy_deviation_kwh / 10000).toFixed(2)} 万 kWh`}
-            positive={report.summary.energy_deviation_kwh > 0}
+            value={`${reportData.summary.energy_deviation_kwh > 0 ? "+" : ""}${(reportData.summary.energy_deviation_kwh / 10000).toFixed(2)} 万 kWh`}
+            positive={reportData.summary.energy_deviation_kwh > 0}
           />
           <SummaryCard
             icon={BarChart3}
             label="收益偏差"
-            value={`${report.summary.revenue_deviation > 0 ? "+" : ""}¥${report.summary.revenue_deviation.toLocaleString()}`}
-            positive={report.summary.revenue_deviation > 0}
+            value={`${reportData.summary.revenue_deviation > 0 ? "+" : ""}¥${reportData.summary.revenue_deviation.toLocaleString()}`}
+            positive={reportData.summary.revenue_deviation > 0}
           />
           <SummaryCard
             icon={Info}
             label="实际收益"
-            value={`¥${report.summary.revenue_actual.toLocaleString()}`}
+            value={`¥${reportData.summary.revenue_actual.toLocaleString()}`}
           />
         </div>
         <p className="text-[11px] text-zinc-400">
-          * 电价说明：按照场站所在地区脱硫煤标杆电价({report.feedInPrice}元/kWh)计算收益
+          * 电价说明：按照场站所在地区脱硫煤标杆电价({reportData.feedInPrice}元/kWh)计算收益
         </p>
       </section>
 
@@ -456,7 +381,7 @@ export default function ReportDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {report.waterfall.map((item, idx) => (
+              {reportData.waterfall.map((item, idx) => (
                 <div key={item.key} className="flex items-center gap-3">
                   <span className="w-28 text-xs text-zinc-500 shrink-0">{item.label}</span>
                   <div className="flex-1 flex items-center gap-2">
@@ -491,7 +416,7 @@ export default function ReportDetailPage() {
           <h3 className="text-sm font-semibold text-zinc-800">
             ★ 已诊断损失的处理建议（有明确数据证据，可定位到设备）
           </h3>
-          {report.lossBreakdown.map((loss) => (
+          {reportData.lossBreakdown.map((loss) => (
             <Card key={loss.key} className="border-l-4 border-l-amber-400">
               <CardContent className="p-4">
                 <div className="flex items-start justify-between mb-3">
@@ -554,17 +479,17 @@ export default function ReportDetailPage() {
             <CardContent>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                 {[
-                  ["经度", report.stationParams.longitude.toFixed(6)],
-                  ["纬度", report.stationParams.latitude.toFixed(6)],
-                  ["时区", report.stationParams.timezone],
-                  ["资源区", `${report.stationParams.resourceZone} 类`],
-                  ["并网日期", report.stationParams.gridConnDate],
-                  ["组件类型", report.stationParams.moduleType],
-                  ["组件型号", report.stationParams.moduleModel],
-                  ["单块功率", `${report.stationParams.modulePower} Wp`],
-                  ["直流侧容量", `${report.stationParams.totalDcCapacity} kWp`],
-                  ["交流侧容量", `${report.stationParams.totalAcCapacity} kW`],
-                  ["子场站数", `${report.stationParams.subStationCount} 个`],
+                  ["经度", reportData.stationParams.longitude.toFixed(6)],
+                  ["纬度", reportData.stationParams.latitude.toFixed(6)],
+                  ["时区", reportData.stationParams.timezone],
+                  ["资源区", `${reportData.stationParams.resourceZone} 类`],
+                  ["并网日期", reportData.stationParams.gridConnDate],
+                  ["组件类型", reportData.stationParams.moduleType],
+                  ["组件型号", reportData.stationParams.moduleModel],
+                  ["单块功率", `${reportData.stationParams.modulePower} Wp`],
+                  ["直流侧容量", `${reportData.stationParams.totalDcCapacity} kWp`],
+                  ["交流侧容量", `${reportData.stationParams.totalAcCapacity} kW`],
+                  ["子场站数", `${reportData.stationParams.subStationCount} 个`],
                 ].map(([label, value]) => (
                   <div key={label}>
                     <dt className="text-xs text-zinc-400">{label}</dt>
@@ -583,14 +508,14 @@ export default function ReportDetailPage() {
             <CardContent>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                 {[
-                  ["总数据行数", report.dataQuality.totalRows.toLocaleString()],
-                  ["有效行数", report.dataQuality.validRows.toLocaleString()],
-                  ["缺失率", `${report.dataQuality.missingRate}%`],
-                  ["时间覆盖", report.dataQuality.timeCoverage],
-                  ["平均采样间隔", `${report.dataQuality.avgIntervalMin} 分钟`],
-                  ["文件编码", report.dataQuality.encoding],
-                  ["分隔符", report.dataQuality.delimiter === "," ? "逗号 (,)" : report.dataQuality.delimiter],
-                  ["上传文件数", `${report.dataQuality.fileCount} 个`],
+                  ["总数据行数", reportData.dataQuality.totalRows.toLocaleString()],
+                  ["有效行数", reportData.dataQuality.validRows.toLocaleString()],
+                  ["缺失率", `${reportData.dataQuality.missingRate}%`],
+                  ["时间覆盖", reportData.dataQuality.timeCoverage],
+                  ["平均采样间隔", `${reportData.dataQuality.avgIntervalMin} 分钟`],
+                  ["文件编码", reportData.dataQuality.encoding],
+                  ["分隔符", reportData.dataQuality.delimiter === "," ? "逗号 (,)" : reportData.dataQuality.delimiter],
+                  ["上传文件数", `${reportData.dataQuality.fileCount} 个`],
                 ].map(([label, value]) => (
                   <div key={label}>
                     <dt className="text-xs text-zinc-400">{label}</dt>
@@ -598,10 +523,10 @@ export default function ReportDetailPage() {
                   </div>
                 ))}
               </dl>
-              {report.dataQuality.notes && (
+              {reportData.dataQuality.notes && (
                 <div className="mt-3 flex items-start gap-1.5 rounded bg-blue-50 px-2.5 py-2 text-xs text-blue-700">
                   <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-                  {report.dataQuality.notes}
+                  {reportData.dataQuality.notes}
                 </div>
               )}
             </CardContent>
@@ -623,10 +548,10 @@ export default function ReportDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {report.monthlyFullLoadHours.map((m) => {
+              {reportData.monthlyFullLoadHours.map((m) => {
                 const diff = m.actual - m.baseline;
-                const actualPct = m.actual / Math.max(...report.monthlyFullLoadHours.map((x) => x.actual)) * 100;
-                const baselinePct = m.baseline / Math.max(...report.monthlyFullLoadHours.map((x) => x.baseline)) * 100;
+                const actualPct = m.actual / Math.max(...reportData.monthlyFullLoadHours.map((x) => x.actual)) * 100;
+                const baselinePct = m.baseline / Math.max(...reportData.monthlyFullLoadHours.map((x) => x.baseline)) * 100;
                 return (
                   <div key={m.month} className="flex items-center gap-4">
                     <span className="w-20 text-sm font-medium text-zinc-700 shrink-0">
@@ -676,7 +601,7 @@ export default function ReportDetailPage() {
               <thead>
                 <tr className="border-b border-zinc-200 bg-zinc-50">
                   <th className="px-3 py-2.5 text-left font-medium text-zinc-500">指标</th>
-                  {report.monthlyPRTable.map((row) => (
+                  {reportData.monthlyPRTable.map((row) => (
                     <th key={row.month} className="px-3 py-2.5 text-center font-medium text-zinc-500">
                       {row.month}
                     </th>
@@ -692,7 +617,7 @@ export default function ReportDetailPage() {
                 ].map(({ key, label, format, valueClass }) => (
                   <tr key={key} className="border-b border-zinc-100">
                     <td className="px-3 py-2 text-zinc-600 font-medium">{label}</td>
-                    {report.monthlyPRTable.map((row) => (
+                    {reportData.monthlyPRTable.map((row) => (
                       <td key={row.month} className={cn("px-3 py-2 text-center tabular-nums", typeof valueClass === "function" ? valueClass(row[key as keyof typeof row] as number) : valueClass)}>
                         {format(row[key as keyof typeof row] as number)}
                       </td>
@@ -700,7 +625,7 @@ export default function ReportDetailPage() {
                   </tr>
                 ))}
                 <tr className="border-b border-zinc-200">
-                  <td colSpan={report.monthlyPRTable.length + 1} className="px-3 py-1.5 bg-zinc-50">
+                  <td colSpan={reportData.monthlyPRTable.length + 1} className="px-3 py-1.5 bg-zinc-50">
                     <span className="text-[10px] text-zinc-400 font-medium">已诊断损失（可识别故障）</span>
                   </td>
                 </tr>
@@ -710,7 +635,7 @@ export default function ReportDetailPage() {
                   return (
                     <tr key={lossKey} className="border-b border-zinc-100">
                       <td className="px-3 py-1.5 text-zinc-500 pl-6">{label}</td>
-                      {report.monthlyPRTable.map((row) => {
+                      {reportData.monthlyPRTable.map((row) => {
                         const val = row[lossKey as keyof typeof row] as number;
                         return (
                           <td key={row.month} className={cn("px-3 py-1.5 text-center tabular-nums", val !== 0 ? "text-red-600" : "text-zinc-300")}>
@@ -722,13 +647,13 @@ export default function ReportDetailPage() {
                   );
                 })}
                 <tr className="border-b border-zinc-200">
-                  <td colSpan={report.monthlyPRTable.length + 1} className="px-3 py-1.5 bg-zinc-50">
+                  <td colSpan={reportData.monthlyPRTable.length + 1} className="px-3 py-1.5 bg-zinc-50">
                     <span className="text-[10px] text-zinc-400 font-medium">其他损失（合并展示）</span>
                   </td>
                 </tr>
                 <tr className="border-b border-zinc-100">
                   <td className="px-3 py-1.5 text-zinc-500 pl-6">其他损失</td>
-                  {report.monthlyPRTable.map((row) => (
+                  {reportData.monthlyPRTable.map((row) => (
                     <td key={row.month} className={cn("px-3 py-1.5 text-center tabular-nums", row.otherLoss >= 0 ? "text-green-600" : "text-red-600")}>
                       {row.otherLoss > 0 ? "+" : ""}{row.otherLoss.toFixed(2)}%
                     </td>
@@ -756,7 +681,7 @@ export default function ReportDetailPage() {
           采集器/逆变器设备离线事件记录
         </p>
 
-        {report.offlineEvents.length === 0 ? (
+        {reportData.offlineEvents.length === 0 ? (
           <Card>
             <CardContent className="flex items-center gap-2 py-6 text-center">
               <CheckCircle2 className="h-5 w-5 text-green-500" />
@@ -777,7 +702,7 @@ export default function ReportDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {report.offlineEvents.map((evt, i) => (
+                  {reportData.offlineEvents.map((evt, i) => (
                     <tr key={i} className="border-b border-zinc-100">
                       <td className="px-4 py-2.5 font-mono text-xs">{evt.loggerSn}</td>
                       <td className="px-4 py-2.5 font-mono text-xs">{evt.inverterSn}</td>
