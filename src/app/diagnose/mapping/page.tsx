@@ -14,7 +14,7 @@
  * 映射结果确认后 → POST /api/v1/tasks/:id/confirm 触发异步诊断（§4.2.1）
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -178,6 +178,14 @@ const MOCK_COLUMNS: MappedColumn[] = [
 ];
 
 export default function MappingPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center py-24"><p className="text-sm text-zinc-500">加载中...</p></div>}>
+      <MappingPageInner />
+    </Suspense>
+  );
+}
+
+function MappingPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 

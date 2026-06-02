@@ -12,7 +12,7 @@
  *   3. 系统解析文件 → AI 字段识别 → 跳转到映射确认页
  */
 
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -88,6 +88,14 @@ interface UploadedFile {
 }
 
 export default function UploadPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center py-24"><p className="text-sm text-zinc-500">加载中...</p></div>}>
+      <UploadPageInner />
+    </Suspense>
+  );
+}
+
+function UploadPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedStationId = searchParams.get("station_id");
