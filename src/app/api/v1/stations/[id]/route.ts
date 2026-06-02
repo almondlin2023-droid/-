@@ -10,15 +10,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { MOCK_STATIONS, MOCK_SUB_STATIONS } from "@/lib/mock-data";
 import { getDB } from "@/lib/data-access";
+import { callEngine } from "@/lib/engine-client";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { userId } = await auth();
+  const { userId, getToken } = await auth();
   if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
+  // 优先调用 engine API
+  const token = await getToken();
+  const engineRes = await callEngine(`/api/v1/stations/${id}`, token);
+  if (engineRes) {
+    if ("error" in engineRes) {
+      return NextResponse.json({ error: engineRes.error }, { status: engineRes.status as number });
+    }
+    return NextResponse.json(engineRes);
+  }
+
+  // 回退: Supabase → mock
   const db = getDB();
   if (db) {
     const { data: station, error } = await db.from("stations")
@@ -33,7 +45,6 @@ export async function GET(
     }
   }
 
-  // 回退到 mock 数据
   const station = MOCK_STATIONS.find((s) => s.id === id);
   if (!station) {
     return NextResponse.json({ error: "电站不存在" }, { status: 404 });
@@ -47,11 +58,22 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { userId } = await auth();
+  const { userId, getToken } = await auth();
   if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const body = await request.json();
 
+  // 优先调用 engine API
+  const token = await getToken();
+  const engineRes = await callEngine(`/api/v1/stations/${id}`, token, { method: "PUT", body });
+  if (engineRes) {
+    if ("error" in engineRes) {
+      return NextResponse.json({ error: engineRes.error }, { status: engineRes.status as number });
+    }
+    return NextResponse.json(engineRes);
+  }
+
+  // 回退: Supabase → mock
   const db = getDB();
   if (db) {
     const { data: station, error } = await db.from("stations")
@@ -69,7 +91,6 @@ export async function PUT(
     }
   }
 
-  // 回退到 mock 数据
   const station = MOCK_STATIONS.find((s) => s.id === id);
   if (!station) {
     return NextResponse.json({ error: "电站不存在" }, { status: 404 });
@@ -83,9 +104,20 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { userId } = await auth();
+  const { userId, getToken } = await auth();
   if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
+  // 优先调用 engine API
+  const token = await getToken();
+  const engineRes = await callEngine(`/api/v1/stations/${id}`, token, { method: "DELETE" });
+  if (engineRes) {
+    if ("error" in engineRes) {
+      return NextResponse.json({ error: engineRes.error }, { status: engineRes.status as number });
+    }
+    return NextResponse.json(engineRes);
+  }
+
+  // 回退: Supabase → mock
   const db = getDB();
   if (db) {
     const { data: station, error } = await db.from("stations")
@@ -100,7 +132,6 @@ export async function DELETE(
     }
   }
 
-  // 回退到 mock 数据
   const station = MOCK_STATIONS.find((s) => s.id === id);
   if (!station) {
     return NextResponse.json({ error: "电站不存在" }, { status: 404 });

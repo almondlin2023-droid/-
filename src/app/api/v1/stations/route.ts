@@ -5,32 +5,40 @@
  * POST /api/v1/stations      — 创建电站
  *
  * 技术架构 §4.1：BFF 层接收前端请求，验证 Clerk 认证后转发引擎 API。
- * V1 阶段直接返回模拟数据，对接引擎后替换为 fetch() 调用。
+ * 引擎不可用时回退到 Supabase / mock 数据。
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { MOCK_STATIONS, MOCK_SUB_STATIONS } from "@/lib/mock-data";
 import { getDB } from "@/lib/data-access";
+import { callEngine } from "@/lib/engine-client";
 
-/**
- * GET /api/v1/stations
- * 获取当前用户的电站列表，可选筛选状态
- */
 export async function GET(request: NextRequest) {
-  const { userId } = await auth();
+  const { userId, getToken } = await auth();
   if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
 
+  // 优先调用 engine API
+  const token = await getToken();
+  const qs = status ? `?status=${status}` : "";
+  const engineRes = await callEngine(`/api/v1/stations${qs}`, token);
+  if (engineRes) {
+    if ("error" in engineRes) {
+      return NextResponse.json({ error: engineRes.error }, { status: engineRes.status as number });
+    }
+    return NextResponse.json(engineRes);
+  }
+
+  // 回退: Supabase → mock
   const db = getDB();
   if (db) {
     let query = db.from("stations").select("*").eq("owner_id", userId);
     if (status) query = query.eq("status", status);
     const { data: stations, error } = await query;
     if (!error && stations) {
-      // 附带子场站数量
       const enriched = await Promise.all(
         stations.map(async (s: Record<string, unknown>) => {
           const { count } = await db.from("sub_stations")
@@ -55,16 +63,23 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ data: enriched, total: enriched.length });
 }
 
-/**
- * POST /api/v1/stations
- * 创建新电站（含子场站）
- */
 export async function POST(request: NextRequest) {
-  const { userId } = await auth();
+  const { userId, getToken } = await auth();
   if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const body = await request.json();
 
+  // 优先调用 engine API
+  const token = await getToken();
+  const engineRes = await callEngine("/api/v1/stations", token, { method: "POST", body });
+  if (engineRes) {
+    if ("error" in engineRes) {
+      return NextResponse.json({ error: engineRes.error }, { status: engineRes.status as number });
+    }
+    return NextResponse.json(engineRes, { status: 201 });
+  }
+
+  // 回退: Supabase → mock
   const db = getDB();
   if (db) {
     const { data: station, error } = await db.from("stations")
@@ -91,7 +106,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // 回退到 mock 数据
   const newStation = {
     id: `st-${Date.now()}`,
     owner_id: userId,

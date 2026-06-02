@@ -7,13 +7,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { MOCK_TASKS } from "@/lib/mock-data";
 import { getDB } from "@/lib/data-access";
+import { callEngine } from "@/lib/engine-client";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: stationId } = await params;
-  const { userId } = await auth();
+  const { userId, getToken } = await auth();
   if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
 
   const { searchParams } = new URL(request.url);
@@ -23,6 +24,20 @@ export async function GET(
     return NextResponse.json({ error: "请选择 2-3 个任务进行对比" }, { status: 400 });
   }
 
+  // 优先调用 engine API
+  const token = await getToken();
+  const engineRes = await callEngine(
+    `/api/v1/stations/${stationId}/tasks/compare?task_ids=${taskIds.join(",")}`,
+    token,
+  );
+  if (engineRes) {
+    if ("error" in engineRes) {
+      return NextResponse.json({ error: engineRes.error }, { status: engineRes.status as number });
+    }
+    return NextResponse.json(engineRes);
+  }
+
+  // 回退: Supabase → mock
   const db = getDB();
   if (db) {
     const { data: tasks, error } = await db.from("diagnosis_tasks")
@@ -35,7 +50,6 @@ export async function GET(
     }
   }
 
-  // 回退到 mock 数据
   const tasks = taskIds
     .map((tid) => MOCK_TASKS[tid])
     .filter(Boolean)
