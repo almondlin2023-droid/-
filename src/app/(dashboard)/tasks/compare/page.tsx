@@ -14,7 +14,7 @@
  *   - 关键指标变化表
  */
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
@@ -52,6 +52,19 @@ import type { Station } from "@/types/diagnosis";
 import type { MockTask, CompareIssue, CompareLossItem } from "@/lib/mock-data";
 
 export default function ComparePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <Loader2 className="h-12 w-12 text-zinc-300 animate-spin" />
+        <h3 className="mt-4 text-sm font-medium text-zinc-500">加载中...</h3>
+      </div>
+    }>
+      <ComparePageInner />
+    </Suspense>
+  );
+}
+
+function ComparePageInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
