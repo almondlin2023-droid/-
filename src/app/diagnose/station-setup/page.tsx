@@ -177,7 +177,7 @@ export default function StationSetupPage() {
               </div>
 
               <FormField label="太阳能资源区">
-                <Select value={resourceZone} onValueChange={setResourceZone}>
+                <Select value={resourceZone} onValueChange={(v) => setResourceZone(v ?? "III")}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -203,7 +203,7 @@ export default function StationSetupPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <FormField label="组件类型">
-                <Select value={moduleType} onValueChange={setModuleType}>
+                <Select value={moduleType} onValueChange={(v) => setModuleType(v ?? "mono")}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -248,7 +248,7 @@ export default function StationSetupPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <FormField label="并网电压等级">
-                <Select value={gridVoltage} onValueChange={setGridVoltage}>
+                <Select value={gridVoltage} onValueChange={(v) => setGridVoltage(v ?? "10kV")}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
