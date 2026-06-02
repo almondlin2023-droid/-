@@ -17,6 +17,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
+  ArrowRight,
   Upload,
   FileSpreadsheet,
   FileText,
@@ -274,10 +275,22 @@ function UploadPageInner() {
                 )}
               </div>
               {stationId === "new" && (
-                <p className="text-xs text-zinc-400 flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" />
-                  选择&ldquo;新建电站&rdquo;将在诊断完成后自动创建电站实体（PRD §4.3 诊断驱动创建）
-                </p>
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 space-y-2">
+                  <p className="text-sm font-medium text-blue-800 flex items-center gap-1.5">
+                    <AlertCircle className="h-4 w-4" />
+                    新建电站需先填写基础资料
+                  </p>
+                  <p className="text-xs text-blue-600">
+                    数据导入前需要维护电站地理位置、组件参数、并网信息等基础数据，
+                    这些参数将用于损失模型的精确计算。
+                  </p>
+                  <Link href="/diagnose/station-setup">
+                    <Button size="sm" className="mt-1 text-xs">
+                      填写电站信息
+                      <ArrowRight className="ml-1 h-3 w-3" />
+                    </Button>
+                  </Link>
+                </div>
               )}
             </CardContent>
           </Card>

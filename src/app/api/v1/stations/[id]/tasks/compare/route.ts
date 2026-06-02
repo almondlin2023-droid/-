@@ -14,8 +14,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: stationId } = await params;
-  const { userId, getToken } = await auth();
-  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  const { getToken } = await auth();
 
   const { searchParams } = new URL(request.url);
   const taskIds = searchParams.get("task_ids")?.split(",") ?? [];
@@ -41,7 +40,7 @@ export async function GET(
   const db = getDB();
   if (db) {
     const { data: tasks, error } = await db.from("diagnosis_tasks")
-      .select("*").in("id", taskIds).eq("station_id", stationId).eq("owner_id", userId);
+      .select("*").in("id", taskIds).eq("station_id", stationId).eq("owner_id", "anonymous");
     if (!error && tasks && tasks.length >= 2) {
       return NextResponse.json({ data: tasks });
     }

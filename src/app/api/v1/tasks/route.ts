@@ -12,8 +12,7 @@ import { getDB } from "@/lib/data-access";
 import { callEngine } from "@/lib/engine-client";
 
 export async function GET(request: NextRequest) {
-  const { userId, getToken } = await auth();
-  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  const { getToken } = await auth();
 
   const { searchParams } = new URL(request.url);
   const stationId = searchParams.get("station_id") ?? undefined;
@@ -32,7 +31,7 @@ export async function GET(request: NextRequest) {
   // 回退: Supabase → mock
   const db = getDB();
   if (db) {
-    let query = db.from("diagnosis_tasks").select("*").eq("owner_id", userId).order("created_at", { ascending: false });
+    let query = db.from("diagnosis_tasks").select("*").eq("owner_id", "anonymous").order("created_at", { ascending: false });
     if (stationId) query = query.eq("station_id", stationId);
     const { data: tasks, error } = await query;
     if (!error && tasks) {
@@ -45,8 +44,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { userId, getToken } = await auth();
-  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  const { getToken } = await auth();
 
   const body = await request.json();
 
@@ -65,7 +63,7 @@ export async function POST(request: NextRequest) {
   if (db) {
     const { data: task, error } = await db.from("diagnosis_tasks")
       .insert({
-        owner_id: userId,
+        owner_id: "anonymous",
         station_id: body.station_id,
         status: "pending",
         scope: body.scope ?? {},
@@ -79,7 +77,7 @@ export async function POST(request: NextRequest) {
 
   const newTask = {
     id: `task-${Date.now()}`,
-    owner_id: userId,
+    owner_id: "anonymous",
     status: "pending" as const,
     created_at: new Date().toISOString(),
     ...body,

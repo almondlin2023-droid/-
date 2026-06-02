@@ -17,8 +17,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { userId, getToken } = await auth();
-  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  const { getToken } = await auth();
 
   // 优先调用 engine API
   const token = await getToken();
@@ -34,7 +33,7 @@ export async function GET(
   const db = getDB();
   if (db) {
     const { data: station, error } = await db.from("stations")
-      .select("*").eq("id", id).eq("owner_id", userId).single();
+      .select("*").eq("id", id).eq("owner_id", "anonymous").single();
     if (!error && station) {
       const { data: subStations } = await db.from("sub_stations")
         .select("*").eq("station_id", id).order("sort_order");
@@ -58,8 +57,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { userId, getToken } = await auth();
-  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  const { getToken } = await auth();
 
   const body = await request.json();
 
@@ -81,7 +79,7 @@ export async function PUT(
         ...body,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id).eq("owner_id", userId)
+      .eq("id", id).eq("owner_id", "anonymous")
       .select().single();
     if (!error && station) {
       return NextResponse.json({ data: station });
@@ -104,8 +102,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { userId, getToken } = await auth();
-  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  const { getToken } = await auth();
 
   // 优先调用 engine API
   const token = await getToken();
@@ -122,7 +119,7 @@ export async function DELETE(
   if (db) {
     const { data: station, error } = await db.from("stations")
       .update({ status: "archived", updated_at: new Date().toISOString() })
-      .eq("id", id).eq("owner_id", userId)
+      .eq("id", id).eq("owner_id", "anonymous")
       .select().single();
     if (!error && station) {
       return NextResponse.json({ data: station });

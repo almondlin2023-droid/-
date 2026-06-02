@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"C:/Users/User/Desktop/项目资料库/engine/app/services/loss_engine/detectors/local\" \"C:/Users/User/Desktop/项目资料库/engine/app/services/loss_engine/detectors/ai\")"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\User\\Desktop\\项目资料库\\engine\\app\\services\\loss_engine\\detectors"
+    ]
+  }
+}

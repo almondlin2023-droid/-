@@ -11,8 +11,7 @@ import { MOCK_AI_FIELD_SUGGESTIONS } from "@/lib/mock-data";
 import { callEngine } from "@/lib/engine-client";
 
 export async function POST(request: NextRequest) {
-  const { userId, getToken } = await auth();
-  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  const { getToken } = await auth();
 
   const body = await request.json();
 

@@ -14,8 +14,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { userId, getToken } = await auth();
-  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  const { getToken } = await auth();
 
   // 优先调用 engine API
   const token = await getToken();
@@ -31,7 +30,7 @@ export async function GET(
   const db = getDB();
   if (db) {
     const { data: task, error } = await db.from("diagnosis_tasks")
-      .select("*").eq("id", id).eq("owner_id", userId).single();
+      .select("*").eq("id", id).eq("owner_id", "anonymous").single();
     if (!error && task) return NextResponse.json({ data: task });
     if (error) return NextResponse.json({ error: "任务不存在" }, { status: 404 });
   }

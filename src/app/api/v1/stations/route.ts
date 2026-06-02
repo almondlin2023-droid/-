@@ -15,8 +15,7 @@ import { getDB } from "@/lib/data-access";
 import { callEngine } from "@/lib/engine-client";
 
 export async function GET(request: NextRequest) {
-  const { userId, getToken } = await auth();
-  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  const { getToken } = await auth();
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
@@ -35,7 +34,7 @@ export async function GET(request: NextRequest) {
   // 回退: Supabase → mock
   const db = getDB();
   if (db) {
-    let query = db.from("stations").select("*").eq("owner_id", userId);
+    let query = db.from("stations").select("*").eq("owner_id", "anonymous");
     if (status) query = query.eq("status", status);
     const { data: stations, error } = await query;
     if (!error && stations) {
@@ -64,8 +63,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { userId, getToken } = await auth();
-  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  const { getToken } = await auth();
 
   const body = await request.json();
 
@@ -84,7 +82,7 @@ export async function POST(request: NextRequest) {
   if (db) {
     const { data: station, error } = await db.from("stations")
       .insert({
-        owner_id: userId,
+        owner_id: "anonymous",
         name: body.name,
         longitude: body.longitude,
         latitude: body.latitude,
@@ -108,7 +106,7 @@ export async function POST(request: NextRequest) {
 
   const newStation = {
     id: `st-${Date.now()}`,
-    owner_id: userId,
+    owner_id: "anonymous",
     status: "active" as const,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

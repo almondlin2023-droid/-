@@ -14,8 +14,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const { userId, getToken } = await auth();
-  if (!userId) return NextResponse.json({ error: "未登录" }, { status: 401 });
+  const { getToken } = await auth();
 
   // 优先调用 engine API
   const token = await getToken();
@@ -31,7 +30,7 @@ export async function POST(
   const db = getDB();
   if (db) {
     await db.from("diagnosis_tasks")
-      .update({ status: "analyzing" }).eq("id", id).eq("owner_id", userId);
+      .update({ status: "analyzing" }).eq("id", id).eq("owner_id", "anonymous");
   }
 
   return NextResponse.json({
